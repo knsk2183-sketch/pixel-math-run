@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pixel Math Run</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #333; }
+        #game-container { border: 2px solid #fff; }
+    </style>
+</head>
+<body>
+
+<div id="game-container"></div>
+
+<script>
+// --- タイトルシーン ---
+class TitleScene extends Phaser.Scene {
+    constructor() { super('TitleScene'); }
+    preload() { 
+        this.load.image('james_title', 'james.png'); 
+        this.load.audio('bgm', 'Titlesong.mp3');
+        this.load.audio('start', 'start.mp3'); // 効果音の読み込み
+    }
+    create() {
+        this.cameras.main.setBackgroundColor('#87CEEB');
+        
+        // タイトルに戻るたびに確実に再生させる
+        if (this.sound.get('bgm')) {
+            this.sound.removeByKey('bgm'); // 一度破棄して再読み込みさせる
+        }
+        this.bgm = this.sound.add('bgm', { loop: true, volume: 0.5 });
+        this.bgm.play();
+
+        this.add.rectangle(200, 300, 360, 560).setStrokeStyle(10, 0xFFFFFF);
+        let currentHighScore = localStorage.getItem('pixelMathHighScore') || 0;
+        this.add.text(200, 100, 'PIXEL\nMATH RUN!', { fontSize: '24px', color: '#FFFFFF', align: 'center', stroke: '#000000', strokeThickness: 6 }).setOrigin(0.5);
+        this.add.text(200, 200, '最高スコア: ' + currentHighScore, { fontSize: '14px', color: '#000000' }).setOrigin(0.5);
+        this.add.sprite(200, 350, 'james_title').setScale(0.2);
+        
+        const startBtn = this.add.text(200, 500, 'PRESS START', { fontSize: '16px', color: '#FFFFFF', backgroundColor: '#FF6B81', padding: { x: 20, y: 15 } }).setOrigin(0.5).setInteractive();
+        // --- 修正箇所: ここでクリック音を鳴らす ---
+        startBtn.on('pointerdown', () => {
+            this.sound.play('start'); // 効果音を再生
+            this.bgm.stop();           // BGMを停止
+            
+            // 効果音が鳴り終わるまで少し待ってから遷移するのも良いですが、
+            // 即時遷移でも十分聞こえます。
+            this.scene.start('GameScene', { score: 0 });
+        });
+    }
+}
+
+// --- ゲームシーン ---
+class GameScene extends Phaser.Scene {
+    constructor() { super('GameScene'); }
+    init(data) { this.score = data.score || 0; }
+    preload() {
+        this.load.image('penguin1', 'penguin1.png');
+        this.load.image('penguin2', 'penguin2.png');
+    }
+    create() {
+        this.cameras.main.setBackgroundColor('#87CEEB');
+        this.add.rectangle(200, 550, 400, 100, 0x7cfc00);
+        this.scoreText = this.add.text(20, 20, 'スコア: ' + this.score, { fontSize: '20px', color: '#000' });
+        this.anims.create({ key: 'walk_anim', frames: [{ key: 'penguin1' }, { key: 'penguin2' }], frameRate: 3, repeat: -1 });
+        this.add.sprite(100, 470, 'penguin1').setScale(0.2).play('walk_anim');
+        
+        this.timer = 5;
+        this.timerBarBg = this.add.rectangle(200, 80, 300, 20, 0x333333);
+        this.timerBar = this.add.rectangle(50, 80, 300, 20, 0x00FF00).setOrigin(0, 0.5);
+        this.time.addEvent({ delay: 1000, callback: () => {
+            this.timer--;
+            this.timerBar.width = (this.timer / 5) * 300;
+            if (this.timer <= 0) this.scene.start('GameOverScene', { score: this.score });
+        }, loop: true });
+        
+        this.generateQuestion();
+    }
+    generateQuestion() {
+        let correctCount = this.score / 100;
+        let level = Math.min(Math.floor(correctCount / 20) + 1, 5);
+        let minNum = 1;
+        let maxNum = 10;
+        if (level === 2) maxNum = 30;
+        else if (level === 3) maxNum = 60;
+        else if (level >= 4) {
+            maxNum = 99;
+            if (level === 5) { minNum = 10; maxNum = 200; }
+        }
+        let n1 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
+        let n2 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
+        let answer = n1 + n2;
+        
+        if (this.levelText) this.levelText.destroy();
+        this.levelText = this.add.text(350, 20, 'Lv.' + level, { fontSize: '20px', color: '#FF4500' }).setOrigin(0.5);
+        
+        let bubble = this.add.graphics();
+        bubble.fillStyle(0xFFFFFF, 1);
+        bubble.fillRoundedRect(100, 100, 200, 60, 10);
+        this.add.text(200, 130, `${n1} + ${n2} = ?`, { fontSize: '20px', color: '#000' }).setOrigin(0.5);
+        
+        let options = [answer, answer + Math.floor(Math.random()*20)+5, answer - Math.floor(Math.random()*15)-1, answer + Math.floor(Math.random()*40)+10].sort(() => Math.random() - 0.5);
+        options.forEach((opt, i) => {
+            let btn = this.add.text(80 + (i * 80), 300, opt.toString(), { fontSize: '24px', backgroundColor: '#FF6B81', padding: { x: 15, y: 10 } }).setOrigin(0.5).setInteractive();
+            btn.on('pointerdown', () => {
+                if (opt === answer) this.scene.restart({ score: this.score + 100 });
+                else this.scene.start('GameOverScene', { score: this.score });
+            });
+        });
+    }
+}
+
+// --- ゲームオーバーシーン ---
+class GameOverScene extends Phaser.Scene {
+    constructor() { super('GameOverScene'); }
+    init(data) { this.score = data.score; }
+    create() {
+        if (this.score > (localStorage.getItem('pixelMathHighScore') || 0)) localStorage.setItem('pixelMathHighScore', this.score);
+        this.cameras.main.setBackgroundColor('#000000');
+        this.add.text(200, 250, 'GAME OVER', { fontSize: '32px', color: '#FF0000' }).setOrigin(0.5);
+        this.add.text(200, 300, '今回のスコア: ' + this.score, { fontSize: '24px', color: '#FFFFFF' }).setOrigin(0.5);
+        this.add.text(200, 400, 'タップでタイトルへ', { fontSize: '16px', color: '#FFFF00' }).setOrigin(0.5);
+        this.input.once('pointerdown', () => this.scene.start('TitleScene'));
+    }
+}
+
+const config = { type: Phaser.AUTO, width: 400, height: 600, parent: 'game-container', scene: [TitleScene, GameScene, GameOverScene] };
+const game = new Phaser.Game(config);
+</script>
+</body>
+</html>
