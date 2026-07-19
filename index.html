@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>Pixel Math Run</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
         body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #333; }
@@ -14,239 +15,626 @@
 <div id="game-container"></div>
 
 <script>
+    
 // --- タイトルシーン ---
 class TitleScene extends Phaser.Scene {
     constructor() { super('TitleScene'); }
+
     preload() { 
         this.load.image('james_title', 'james.png'); 
         this.load.image('title_logo', 'title_logo.png');
         this.load.image('start_btn', 'start_btn.png');
         this.load.audio('bgm', 'Titlesong.mp3');
-        this.load.audio('start', 'start.mp3'); // 効果音の読み込み
+        this.load.audio('start', 'start.mp3');
         this.load.image('title_back', 'titleback.jpg');
     }
+
     create() {
-    this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
-    
-    if (this.sound.get('bgm')) this.sound.removeByKey('bgm');
-    this.bgm = this.sound.add('bgm', { loop: true, volume: 0.5 });
-    this.bgm.play();
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
 
-    // 枠線（200, 300の位置に配置されているので、これを基準に調整します）
-    this.add.rectangle(200, 300, 360, 560).setStrokeStyle(10, 0xFFFFFF);
+        // BGMの取得・再生
+        let bgm = this.sound.get('bgm');
+        if (!bgm) {
+            this.bgm = this.sound.add('bgm', { loop: true, volume: 0.5 });
+            this.bgm.play();
+        } else {
+            this.bgm = bgm;
+            if (!this.bgm.isPlaying) this.bgm.play();
+        }
 
-    // 1. タイトルロゴ（枠内の上部）
-    this.add.sprite(200, 160, 'title_logo').setScale(0.28); 
+        this.add.rectangle(200, 300, 360, 560).setStrokeStyle(10, 0xFFFFFF);
+        this.add.sprite(195, 150, 'title_logo').setScale(0.36); 
+        this.add.sprite(200, 330, 'james_title').setScale(0.15);
 
-    // 2. ジェームズ（中央）
-    this.add.sprite(200, 330, 'james_title').setScale(0.15);
-
-    // 3. 最高スコア（ジェームズの下）
-    let currentHighScore = localStorage.getItem('pixelMathHighScore') || 0;
-    this.add.text(200, 430, '最高スコア: ' + currentHighScore, { 
-        fontSize: '16px', color: '#000000', stroke: '#FFFFFF', strokeThickness: 4 
-    }).setOrigin(0.5);
-    
-    // --- 4. スタートボタン（画像）の設定 ---
-    const btnX = 200;
-    const btnY = 500;
-    const originalScale = 0.18;
-    
-    const startBtnImg = this.add.sprite(btnX, btnY, 'start_btn')
-        .setScale(originalScale)
-        .setInteractive();
-    
-    // 【イベントA：ボタンを押したとき】
-    startBtnImg.on('pointerdown', () => {
-        // 1. 縮小する (少し小さく)
-        startBtnImg.setScale(originalScale * 0.9);
-        // 2. 暗くする (灰色っぽい色を重ねて暗く見せる)
-        startBtnImg.setTint(0xaaaaaa);
+        let currentHighScore = localStorage.getItem('pixelMathHighScore') || 0;
+        this.add.text(200, 430, '最高スコア: ' + currentHighScore, { 
+            fontSize: '16px', color: '#000000', stroke: '#FFFFFF', strokeThickness: 4 
+        }).setOrigin(0.5);
         
-        // 効果音再生とシーン遷移は、指を離した時に行うのが一般的ですが、
-        // 押した瞬間に反応させたい場合はここに書いてもOKです。
-        // 今回は「押した感触」を優先し、ここには処理を入れず、
-        // pointerup または pointerout で遷移させます。
-    });
+        // ★関数を使ってボタンを配置（音なしで設定）
+        this.createImageButton(200, 500, 'start_btn', 0.30, () => {
+            this.scene.start('MenuScene');
+        }, false);
+    }
 
-    // 【イベントB：ボタンの上で指を離したとき（クリック確定）】
-    startBtnImg.on('pointerup', () => {
-        // 元のサイズと色に戻す
-        startBtnImg.setScale(originalScale);
-        startBtnImg.clearTint();
+    // ★画像ボタン用関数（クラスの中に配置）
+    createImageButton(x, y, key, scale, callback, playSE = false) {
+        let btn = this.add.sprite(x, y, key).setScale(scale).setInteractive();
 
-        // --- 画面遷移の処理 ---
-        this.sound.play('start');
-        this.bgm.stop();
-        this.scene.start('GameScene', { score: 0 });
-    });
+        btn.on('pointerdown', () => {
+            btn.setScale(scale * 0.9);
+            btn.setTint(0xaaaaaa);
+        });
 
-    // 【イベントC：ボタンの上から指が外れたとき（キャンセル）】
-    startBtnImg.on('pointerout', () => {
-        // 枠外に指が外れたら、押した状態をキャンセルして見た目を元に戻す
-        startBtnImg.setScale(originalScale);
-        startBtnImg.clearTint();
-    });
+        btn.on('pointerup', () => {
+            btn.setScale(scale);
+            btn.clearTint();
+            
+            if (playSE) {
+                this.sound.play('start', { volume: 0.5 });
+            }
+            callback(); 
+        });
+
+        btn.on('pointerout', () => {
+            btn.setScale(scale);
+            btn.clearTint();
+        });
+
+        return btn;
+    }
 }
+
+    
+
+// --- メニューシーン ---
+class MenuScene extends Phaser.Scene {
+    constructor() { super('MenuScene'); }
+
+    create() {
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+        this.add.text(200, 100, 'メニュー', { fontSize: '32px', color: '#000' }).setOrigin(0.5);
+
+        const menuItems = [
+            { text: 'ステージ選択', scene: 'StageSelectScene' },
+            { text: 'ランキング', scene: 'RankingScene' },
+            { text: 'ショップ', scene: 'ShopScene' },
+            { text: 'アイテム一覧', scene: 'ItemScene' },
+            { text: 'タイトルへ戻る', scene: 'TitleScene' },
+        ];
+
+        menuItems.forEach((item, i) => {
+            this.createTextButton(200, 200 + (i * 60), item.text, () => {
+                this.scene.start(item.scene);
+            }, false);
+        });
+    }
+
+    // ★ここが抜けていました！これを入れてください
+    createTextButton(x, y, text, callback, playSE = true) {
+    let btn = this.add.text(x, y, text, { 
+        fontSize: '24px', 
+        backgroundColor: '#444', 
+        padding: { x: 20, y: 10 } 
+    }).setOrigin(0.5).setInteractive();
+
+    // 押した時の反応を「色」と「サイズ」だけに絞る
+    btn.on('pointerdown', () => {
+        btn.setBackgroundColor('#111');
+        btn.setScale(0.95); // 少し小さくするだけで「押した感」が出る
+        
+        if (playSE) {
+            this.sound.play('start', { volume: 0.5 });
+        }
+        callback();
+    });
+
+    btn.on('pointerup', () => {
+        btn.setBackgroundColor('#444');
+        btn.setScale(1.0);
+    });
+
+    btn.on('pointerout', () => {
+        btn.setBackgroundColor('#444');
+        btn.setScale(1.0);
+    });
+
+    return btn;
+    }
+
+}
+
+//---ステージ選択シーン---
+class StageSelectScene extends Phaser.Scene {
+    constructor() { super('StageSelectScene'); }
+
+    create() {
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+        this.add.text(200, 80, 'ステージ選択', { fontSize: '32px', color: '#000' }).setOrigin(0.5);
+
+        // ステージデータを配列で管理
+        const stages = [
+            { name: 'たし算', key: 'addition' },
+            { name: 'ひき算', key: 'subtraction' },
+            { name: 'かけ算', key: 'multiplication' },
+            { name: 'わり算', key: 'division' }
+        ];
+
+        // 関数を使ってボタンを生成
+        stages.forEach((stage, i) => {
+            this.createTextButton(200, 200 + (i * 70), stage.name, () => {
+                // ここでシーン移動
+                this.scene.start('GameScene', { stage: stage.key });
+            });
+        });
+
+        // 戻るボタン
+        this.createTextButton(200, 520, 'メニューへ戻る', () => {
+            this.scene.start('MenuScene');
+        });
+    }
+
+    // 関数定義：playSE という引数を追加 (デフォルトで true)
+createTextButton(x, y, text, callback, playSE = true) {
+    let btn = this.add.text(x, y, text, { 
+        fontSize: '24px', 
+        backgroundColor: '#444', 
+        padding: { x: 20, y: 10 } 
+    }).setOrigin(0.5).setInteractive();
+
+    // 押した時の反応を「色」と「サイズ」だけに絞る
+    btn.on('pointerdown', () => {
+        btn.setBackgroundColor('#111');
+        btn.setScale(0.95); // 少し小さくするだけで「押した感」が出る
+        
+        if (playSE) {
+            this.sound.play('start', { volume: 0.5 });
+        }
+        callback();
+    });
+
+    btn.on('pointerup', () => {
+        btn.setBackgroundColor('#444');
+        btn.setScale(1.0);
+    });
+
+    btn.on('pointerout', () => {
+        btn.setBackgroundColor('#444');
+        btn.setScale(1.0);
+    });
+
+    return btn;
+}
+
 }
 
 // --- ゲームシーン ---
+
 class GameScene extends Phaser.Scene {
+
     constructor() { super('GameScene'); }
-    init(data) { this.score = data.score || 0; }
-    
+
+        init(data) {
+
+            this.score = data.score || 0;
+
+            this.currentStage = data.stage || 'addition'; // メニューからの情報を受け取る
+
+        }
+
+   
+
     preload() {
         this.load.image('penguin1', 'penguin1.png');
         this.load.image('penguin2', 'penguin2.png');
-        this.load.audio('correct', 'correct.mp3');
+        this.load.image('gameback', 'gameback.png');
+        this.load.audio('panti', 'panti.mp3');
         this.load.audio('gameover', 'gameover.mp3');
-        this.load.image('cloud', 'clag.png');
-        this.load.image('tree', 'tree.png');
         this.load.audio('game_bgm', 'gamebgm.mp3');
+        this.load.image('pannti1', 'pannti1.png');
+        this.load.image('pannti2', 'pannti2.png');
+        this.load.image('teki1', 'teki1.png');
+        this.load.audio('damage', 'damage.mp3');
     }
 
-    create() {
-        if (!this.bgm) {
-            this.bgm = this.sound.add('game_bgm', { loop: true, volume: 0.5 });
-            this.bgm.play();
-        }
-        
-        this.cameras.main.setBackgroundColor('#87CEEB');
-        this.add.image(80, 100, 'cloud').setScale(0.3);
-        this.add.image(320, 100, 'cloud').setScale(0.3);
-        
-        this.trees = [];
-        this.trees.push(this.add.image(100, 450, 'tree').setScale(0.4));
-        this.trees.push(this.add.image(300, 450, 'tree').setScale(0.4));
-        
-        this.add.rectangle(200, 550, 400, 100, 0x7cfc00);
-        this.scoreText = this.add.text(20, 20, 'スコア: ' + this.score, { fontSize: '20px', color: '#000' });
-        
+create() {
+        this.sound.stopAll();
+        this.bgm = this.sound.add('game_bgm', { loop: true, volume: 0.5 });
+        this.bgm.play();
+
+        this.score = this.score || 0;
+        this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
+        this.add.image(200, 300, 'gameback').setDisplaySize(400, 600);
+
+           this.scoreText = this.add.text(10, 10, 'スコア\n０００', {  
+            fontSize: '18px', 
+            fontFamily: '"Kanit"', 
+            fontStyle: 'bold',
+            color: '#e2c673', // 画像に近い黄色
+            align: 'center',
+            stroke: '#000000', // 外枠を黒に
+            strokeThickness: 5 // 外枠の太さ
+        });
+
+        this.highScoreText = this.add.text(10, 65, 'ハイスコア\n' + String(this.highScore).padStart(3, '０'), { 
+            fontSize: '15px', 
+            fontFamily: '"Kanit"', 
+            fontStyle: 'bold',
+            color: '#e2c673', 
+            align: 'center',
+            stroke: '#000000', 
+            strokeThickness: 5 
+        });
+
+
         this.anims.create({ key: 'walk_anim', frames: [{ key: 'penguin1' }, { key: 'penguin2' }], frameRate: 3, repeat: -1 });
-        this.add.sprite(100, 470, 'penguin1').setScale(0.2).play('walk_anim');
-        
-        // create() 内のタイマー設定
-this.timer = 5;
-this.timerBarBg = this.add.rectangle(200, 80, 300, 20, 0x333333);
-this.timerBar = this.add.rectangle(50, 80, 300, 20, 0x00FF00).setOrigin(0, 0.5);
+        this.anims.create({ key: 'attack_anim', frames: [{ key: 'pannti1' }, { key: 'pannti2' }], frameRate: 4, repeat: 0 });
 
-// タイマーイベントを関数として定義
-this.startTimer = () => {
-    this.timer = 5; // 5秒にリセット
-    this.timerBar.width = 300; // バーも最大に
-    
-    // 既にイベントがあれば削除
-    if (this.timerEvent) this.timerEvent.remove();
-    
-    // 新しくイベントを作成
-    this.timerEvent = this.time.addEvent({ 
-        delay: 1000, 
-        callback: () => {
-            this.timer--;
-            this.timerBar.width = (this.timer / 5) * 300;
-            if (this.timer <= 0) {
-                this.bgm.stop();
-                this.bgm = null;
-                this.sound.play('gameover');
-                this.scene.start('GameOverScene', { score: this.score });
+        this.jamesShadow = this.add.ellipse(100, 310, 70, 20, 0x000000, 0.4);
+        this.james = this.add.sprite(100, 270, 'penguin1').setScale(0.15).play('walk_anim');
+        this.james.originalX = 100;
+        this.james.originalY = 280;
+
+        this.james.on('animationupdate', (anim, frame) => {
+            if (anim.key === 'attack_anim') {
+                if (frame.textureKey === 'pannti2') { 
+                    this.james.x = this.james.originalX + 30; 
+                    this.jamesShadow.x = this.james.originalX + 30; // 影も前に動かす
+                } else { 
+                    this.james.x = this.james.originalX; 
+                    this.jamesShadow.x = this.james.originalX; // 影も元の位置に戻す
+                }
             }
-        }, 
-        loop: true 
-    });
-};
+        });
 
-// ゲーム開始時にスタート
-this.startTimer();
-        
-        // 初期化
+        this.enemies = this.add.group();
+    
+        // ★ハートとカウントの初期化
+        this.wrongCount = 0;
+        let panelY = 345;
+        let panelX = 50;
+
+        let hpPanel = this.add.graphics();
+        hpPanel.fillStyle(0x1a1a2e, 1);
+        hpPanel.lineStyle(2, 0xc5a059, 1);
+        hpPanel.fillRoundedRect(panelX, panelY, 110, 40, 5); // 幅を100->110に調整
+        hpPanel.strokeRoundedRect(panelX, panelY, 110, 40, 5);
+
+
+        // 2. 「HP」テキスト（Y座標を調整して中央に配置）
+        this.hpLabel = this.add.text(panelX + 25, panelY + 20, 'HP', {
+        fontSize: '20px',
+        fontFamily: '"Kanit"',
+        fontStyle: 'bold',
+        color: '#ffffff'
+        }).setOrigin(0.5);
+
+        // 3. ハートを大きくして表示（fontSizeを24 -> 32に）
+        this.heart1 = this.add.text(panelX + 60, panelY + 20, '♥', {
+            fontSize: '32px',
+            color: '#ff0000'
+        }).setOrigin(0.5);
+
+
+        this.heart2 = this.add.text(panelX + 85, panelY + 20, '♥', {
+            fontSize: '32px',
+            color: '#ff0000'
+        }).setOrigin(0.5);
+
+        this.startTimer();
         this.optionButtons = [];
         this.generateQuestion();
     }
+
+    drawEnemyHP(x, y) {
+    // 敵のX座標を基準に、ジェームズのパネルと同じオフセットを適用
+    let panelX = x - 55; // 中心位置を調整
+    let panelY = y+55;    // ジェームズのパネルと同じY座標に固定
     
-    update() {
-        this.trees.forEach(tree => {
-            tree.x -= 2;
-            if (tree.x < -50) tree.x = 450; 
+    let graphics = this.add.graphics();
+    graphics.fillStyle(0x1a1a2e, 1);
+    graphics.lineStyle(2, 0xc5a059, 1);
+    graphics.fillRoundedRect(panelX, panelY, 110, 40, 5);
+    graphics.strokeRoundedRect(panelX, panelY, 110, 40, 5);
+    
+    // ジェームズのパネルと同じフォント設定・相対座標
+    let hpLabel = this.add.text(panelX + 25, panelY + 20, 'HP', {
+        fontSize: '20px',
+        fontFamily: '"Kanit"',
+        fontStyle: 'bold',
+        color: '#ffffff'
+    }).setOrigin(0.5);
+    
+    let h1 = this.add.text(panelX + 60, panelY + 20, '♥', {
+        fontSize: '32px',
+        color: '#ff0000'
+    }).setOrigin(0.5);
+    
+    let h2 = this.add.text(panelX + 85, panelY + 20, '♥', {
+        fontSize: '32px',
+        color: '#ff0000'
+    }).setOrigin(0.5);
+    
+    return { graphics, hpLabel, h1, h2 };
+}
+
+    startTimer() {
+
+    this.timer = 5.0;
+
+    if (this.timerLabel) this.timerLabel.destroy();
+    this.timerLabel = this.add.text(195, 30, 'TIME', { 
+        fontSize: '32px', 
+        fontFamily: '"Kanit"', 
+        fontStyle: 'bold',
+        color: '#ffffff',    // 中身は白
+        stroke: '#000000',   // 外枠は黒
+        strokeThickness: 6 
+    }).setOrigin(0.5);
+
+    if (this.timerText) this.timerText.destroy();
+    this.timerText = this.add.text(195, 75, this.formatTimer(this.timer), { 
+        fontSize: '40px', 
+        fontFamily: '"Kanit"', 
+        fontStyle: 'bold',
+        color: '#ffffff',
+        stroke: '#000000', 
+        strokeThickness: 6 
+    }).setOrigin(0.5);
+
+
+    if (this.timerEvent) this.timerEvent.remove();
+
+   
+
+    this.timerEvent = this.time.addEvent({
+        delay: 100,
+        callback: () => {
+            this.timer -= 0.1;
+            this.timerText.setText(this.formatTimer(Math.max(0, this.timer)));
+            if (this.timer <= 0) {
+                this.timerEvent.remove();
+                this.wrongCount++;
+                this.sound.play('damage');
+                if (this.wrongCount === 1) {
+                    this.heart2.setFill('#000000');
+                    this.heart2.setStroke('#000000', 3);
+                    this.startTimer();       // タイマーをリセットして次の問題へ
+                    this.generateQuestion(); // 問題を更新
+                } else {
+                    this.heart1.setFill('#000000');
+                    this.heart1.setStroke('#000000', 3);
+                    this.bgm.stop();
+                    this.sound.play('gameover');
+                    this.scene.start('GameOverScene', { score: this.score });
+                }
+            }
+        },
+        loop: true
+    });
+}
+
+
+        formatTimer(time) {
+        // 1. 小数点1桁までにする (5.0)
+        let s = time.toFixed(1);
+        // 2. もし全体の長さが4文字未満なら（つまり10秒未満なら）、前に'0'を足す
+        return s.padStart(4, '0');
+        }
+
+        update() {
+            this.enemies.getChildren().forEach(enemy => {
+            // ジェームズの前（X座標が280くらい）で止まるように設定
+            if (enemy.x > 300) {
+                enemy.x -= 8;
+                if (enemy.shadow) {
+                    enemy.shadow.x -= 8;
+                }
+                enemy.hpPanel.graphics.x -= 8;
+                enemy.hpPanel.hpLabel.x -= 8;
+                enemy.hpPanel.h1.x -= 8;
+                enemy.hpPanel.h2.x -= 8;
+            }
         });
     }
 
-    // --- 掃除関数 ---
-    cleanupQuestions() {
+        cleanupQuestions() {
         if (this.levelText) this.levelText.destroy();
         if (this.bubble) this.bubble.destroy();
         if (this.questionText) this.questionText.destroy();
-        this.optionButtons.forEach(btn => btn.destroy());
+        if (this.optionButtons) {
+            this.optionButtons.forEach(btn => btn.destroy());
+        }
         this.optionButtons = [];
+
     }
 
     generateQuestion() {
-        this.cleanupQuestions(); // 常に掃除してから描画
-
+        this.cleanupQuestions();
+        // 1. レベル計算と敵の入れ替え
         let correctCount = this.score / 100;
-        let level = Math.min(Math.floor(correctCount / 20) + 1, 5);
-        let minNum = 1, maxNum = 10;
-        if (level === 2) maxNum = 30;
-        else if (level === 3) maxNum = 60;
-        else if (level >= 4) {
-            maxNum = 99;
-            if (level === 5) { minNum = 10; maxNum = 200; }
+        let level = Math.min(Math.floor(correctCount / 2) + 1, 5);
+        if (this.currentLevel !== level) {
+            this.enemies.clear(true, true);
+            this.currentLevel = level;
         }
-        let n1 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
-        let n2 = Math.floor(Math.random() * (maxNum - minNum + 1)) + minNum;
-        let answer = n1 + n2;
-        
-        this.levelText = this.add.text(350, 20, 'Lv.' + level, { fontSize: '20px', color: '#FF4500' }).setOrigin(0.5);
-        
-        this.bubble = this.add.graphics();
-        this.bubble.fillStyle(0xFFFFFF, 1);
-        this.bubble.fillRoundedRect(100, 100, 200, 60, 10);
-        this.questionText = this.add.text(200, 130, `${n1} + ${n2} = ?`, { fontSize: '20px', color: '#000' }).setOrigin(0.5);
-        
-        let options = [answer, answer + Math.floor(Math.random()*20)+5, answer - Math.floor(Math.random()*15)-1, answer + Math.floor(Math.random()*40)+10].sort(() => Math.random() - 0.5);
-        
-        options.forEach((opt, i) => {
-            let btn = this.add.text(80 + (i * 80), 300, opt.toString(), { 
-                fontSize: '24px', backgroundColor: '#FF6B81', padding: { x: 15, y: 10 } 
-            }).setOrigin(0.5).setInteractive();
+        let enemy = this.enemies.getFirstAlive();
+        if (!enemy) {
+            let shadow = this.add.ellipse(450, 330, 60, 15, 0x000000, 0.4);
+            enemy = this.add.sprite(450, 290, 'teki1').setScale(0.1);
+            enemy.shadow = shadow;
+            this.enemies.add(enemy);
+            enemy.hp = 2;
+            enemy.hpPanel = this.drawEnemyHP(enemy.x, enemy.y);
+        }
+        // 2. 数式作成
+        let n1, n2, answer, operatorText;
+        if (this.currentStage === 'subtraction') {
+            n1 = Math.floor(Math.random() * 10) + 5;
+            n2 = Math.floor(Math.random() * n1) + 1;
+            answer = n1 - n2;
+            operatorText = `${n1} - ${n2}`;
+        } else {
+            n1 = Math.floor(Math.random() * 10) + 1;
+            n2 = Math.floor(Math.random() * 10) + 1;
+            answer = n1 + n2;
+            operatorText = `${n1} + ${n2}`;
+        }
 
-            btn.on('pointerdown', () => {
-    if (opt === answer) {
-        this.sound.play('correct', { volume: 0.3 }) 
-        this.score += 100;
-        this.scoreText.setText('スコア: ' + this.score);
-        
-        // --- ここでタイマーを完全にリセット！ ---
-        this.startTimer(); 
-        
-        this.generateQuestion();
-    } else {
-        // 間違えたとき（既存の処理）
-        this.bgm.stop();
-        this.bgm = null;
-        this.sound.play('gameover');
-        this.scene.start('GameOverScene', { score: this.score });
-    }
-});
-            this.optionButtons.push(btn); // ボタンを記録
+        // 3. UI描画
+        this.questionContainer = this.add.graphics();
+        this.questionContainer.fillStyle(0x1a1a2e, 1);
+        this.questionContainer.lineStyle(4, 0xd4af37, 1);
+        this.questionContainer.fillRoundedRect(20, 395, 360, 195, 10);
+        this.questionContainer.strokeRoundedRect(20, 395, 360, 195, 10);
+        this.questionText = this.add.text(200, 430, `${operatorText} = ?`, {
+            fontSize: '40px',
+            fontFamily: '"Kanit"',
+            color: '#ffffff',
+            fontStyle: 'bold' ,
+        }).setOrigin(0.5);
+
+        // 4. 選択肢ボタン生成
+        let options = [answer, answer + 5, answer - 2, answer + 10].sort(() => Math.random() - 0.5);
+        options.forEach((opt, index) => {
+            let row = Math.floor(index / 2);
+            let col = index % 2;
+            let x = 115 + (col * 170);
+            let y = 495 + (row * 60);
+            // 背景と文字を作成
+            let btnBg = this.add.graphics();
+            btnBg.fillStyle(0x2d3463, 1);
+            btnBg.fillRoundedRect(x - 80, y - 25, 160, 50, 8);
+            this.optionButtons.push(btnBg);
+            let btnText = this.add.text(x, y, opt.toString(), {
+                fontSize: '28px',
+                color: '#ffffff',
+                fontFamily: '"Kanit"',
+                fontStyle: 'bold',
+            }).setOrigin(0.5).setInteractive();
+            btnText.input.hitArea.setTo(-80, -25, 160, 50);
+            
+            btnText.on('pointerdown', () => {
+            if (opt === answer) {
+            this.sound.play('panti', { volume: 0.3 });
+            this.score += 100;
+
+            // 1. HPの処理とスコア更新を先にまとめる
+            let currentEnemy = this.enemies.getFirstAlive();
+            if (currentEnemy) {
+                currentEnemy.hp--;
+        this.tweens.add({ 
+            targets: currentEnemy, 
+            alpha: 0, 
+            duration: 100, 
+            yoyo: true, 
+            repeat: 1 
+        });
+
+            if (currentEnemy.hp === 1) {
+                currentEnemy.hpPanel.h2.setFill('#000000').setStroke('#000000', 3);
+            } else if (currentEnemy.hp <= 0) {
+                // 1. パネルのパーツを先に削除
+                currentEnemy.hpPanel.graphics.destroy();
+                currentEnemy.hpPanel.hpLabel.destroy();
+                currentEnemy.hpPanel.h1.destroy();
+                currentEnemy.hpPanel.h2.destroy();
+                
+                // 2. 敵を消すアニメーションを先に実行
+                this.tweens.add({
+                    targets: [currentEnemy, currentEnemy.shadow], // ★敵と影の両方を指定
+                    alpha: 0,
+                    duration: 300,
+                    onComplete: () => {
+                        currentEnemy.shadow.destroy(); // ★影を消す
+                        currentEnemy.destroy();
+                    }
+                });
+                // ここにあった currentEnemy.destroy(); は削除しました！
+            }
+        }
+
+        let s = String(this.score).padStart(3, '０');
+        this.scoreText.setText('スコア\n' + s);
+
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            localStorage.setItem('highScore', this.highScore);
+            this.highScoreText.setText('ハイスコア\n' + String(this.highScore).padStart(3, '０'));
+        }
+
+        // 2. アニメーション処理（currentEnemyは上ですでに取得済みなので再取得不要）
+        this.james.setScale(0.20);
+        this.james.y = this.james.originalY + 10;
+        this.james.play('attack_anim');
+
+        this.james.once('animationcomplete', () => {
+            this.james.setScale(0.15);
+            this.james.x = this.james.originalX;
+            this.james.y = this.james.originalY;
+            this.james.play('walk_anim');
+        });
+
+        // 3. 次の問題へ
+        this.time.delayedCall(500, () => {
+            this.startTimer();
+            this.generateQuestion();
+        });
+                } else {
+                    this.wrongCount++;
+                    this.sound.play('damage');
+                    if (this.wrongCount === 1) {
+                        this.heart2.setFill('#000000');
+                        this.heart2.setStroke('#000000', 3);
+                        this.generateQuestion();
+                    } else {
+                        this.heart1.setFill('#000000');
+                        this.heart1.setStroke('#000000', 3);
+                        this.bgm.stop();
+                        this.sound.play('gameover');
+                        this.scene.start('GameOverScene', { score: this.score });
+                    }
+                }
+            });
+            this.optionButtons.push(btnText);
         });
     }
 }
 
-// --- ゲームオーバーシーン ---
-class GameOverScene extends Phaser.Scene {
-    constructor() { super('GameOverScene'); }
-    init(data) { this.score = data.score; }
-    create() {
-        if (this.score > (localStorage.getItem('pixelMathHighScore') || 0)) localStorage.setItem('pixelMathHighScore', this.score);
-        this.cameras.main.setBackgroundColor('#000000');
-        this.add.text(200, 250, 'GAME OVER', { fontSize: '32px', color: '#FF0000' }).setOrigin(0.5);
-        this.add.text(200, 300, '今回のスコア: ' + this.score, { fontSize: '24px', color: '#FFFFFF' }).setOrigin(0.5);
-        this.add.text(200, 400, 'タップでタイトルへ', { fontSize: '16px', color: '#FFFF00' }).setOrigin(0.5);
-        this.input.once('pointerdown', () => this.scene.start('TitleScene'));
+    // --- ゲームオーバーシーン ---
+    class GameOverScene extends Phaser.Scene {
+        constructor() { super('GameOverScene'); }
+        init(data) { this.score = data.score; }
+        create() {
+            if (this.score > (localStorage.getItem('pixelMathHighScore') || 0)) localStorage.setItem('pixelMathHighScore', this.score);
+            this.add.text(200, 250, 'GAME OVER', { fontSize: '32px', color: '#FF0000' }).setOrigin(0.5);
+            this.add.text(200, 300, 'スコア: ' + this.score, { fontSize: '24px', color: '#FFFFFF' }).setOrigin(0.5);
+            this.input.once('pointerdown', () => this.scene.start('TitleScene'));
+        }
     }
+
+
+class RankingScene extends Phaser.Scene {
+    constructor() { super('RankingScene'); }
+    create() { this.add.text(100, 100, '準備中...'); }
 }
 
-const config = { type: Phaser.AUTO, width: 400, height: 600, parent: 'game-container', scene: [TitleScene, GameScene, GameOverScene] };
+// --- 追加：まだ作っていないシーンの定義 ---
+class ShopScene extends Phaser.Scene {
+    constructor() { super('ShopScene'); }
+    create() { this.add.text(200, 300, 'ショップ（準備中）', { color: '#000' }).setOrigin(0.5); }
+}
+
+class ItemScene extends Phaser.Scene {
+    constructor() { super('ItemScene'); }
+    create() { this.add.text(200, 300, 'アイテム一覧（準備中）', { color: '#000' }).setOrigin(0.5); }
+}
+const config = {
+    type: Phaser.AUTO,
+    width: 400,
+    height: 600,
+    scene: [TitleScene, MenuScene, StageSelectScene, GameScene, GameOverScene, RankingScene, ShopScene, ItemScene] // ★追加
+};
 const game = new Phaser.Game(config);
 </script>
 </body>
