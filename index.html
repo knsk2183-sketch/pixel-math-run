@@ -10,6 +10,7 @@
         body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #333; }
         #game-container { border: 2px solid #fff; }
     </style>
+    
 </head>
 <body>
 
@@ -121,7 +122,7 @@ class MenuScene extends Phaser.Scene {
 
     preload() {
     this.load.image('menyu', 'menyu.png');
-    this.load.image('stage_select', 'stage_select.png');
+    this.load.image('stage_select', 'gamemode.png');
     this.load.image('player_register', 'player_register.png');
     this.load.image('ranking', 'ranking.png');
     this.load.image('shop', 'shop.png');
@@ -202,7 +203,6 @@ class MenuScene extends Phaser.Scene {
 }
 
 // --- ゲームモード選択シーン ---
-// --- ゲームモード選択シーン ---
 class ModeSelectScene extends Phaser.Scene {
     constructor() {
         super('ModeSelectScene');
@@ -212,45 +212,83 @@ class ModeSelectScene extends Phaser.Scene {
         // 必要に応じてモード選択用のボタン画像をロード
         // すでにメニューで使っている画像や、新しく用意した画像を指定
         this.load.image('title_back', 'title_back.png'); // 背景
-        this.load.image('mode_title', 'mode_title.png'); // 「ゲームモード」の見出し画像（文字でもOK）
-        this.load.image('score_attack_btn', 'score_attack.png'); // スコアアタックボタン
-        this.load.image('quest_btn', 'quest.png');             // クエストモードボタン
-        this.load.image('back_to_menu', 'back_to_title.png');  // メニューに戻る用（または専用の戻るボタン）
+        this.load.image('mode_select_header', 'gameselect.png'); // 「ゲームモード」の見出し画像（文字でもOK）
+        this.load.image('score_attack_panel', 'score_attack_btn.png'); // スコアアタックボタン
+        this.load.image('quest_panel', 'quest_btn.png');             // クエストモードボタン
+        this.load.image('back_btn', 'back_to_menu.png');  // メニューに戻る用（または専用の戻るボタン）
     }
 
     create() {
         // 1. 背景とヘッダー
         this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
         
-        // ヘッダー部分（テキストにする場合のデザイン例）
-        this.add.image(200, 70, 'menu_header'); // もしヘッダー画像があれば
-        this.add.text(200, 70, 'ゲームモード', {
-            fontSize: '28px',
+        // ヘッダー部分（image_27.pngを配置、setScaleで調整）
+        this.add.image(200, 70, 'mode_select_header').setScale(0.4);
+
+        //今はストーリーとスコア逆だから、ストーリー完成したら逆にしなよ♡
+        //ストーリーモードへ進むボタン
+        let storyPanel = this.add.image(200, 415, 'quest_panel').setInteractive().setScale(0.35);
+        this.setupPanelButton(storyPanel, () => {
+             // ここに将来クエスト用のマップシーンをつなげる
+             // this.scene.start('QuestMapScene');
+             alert('ストーリーモードは準備中！');
+        });
+        // スコアアタックモードへ進むボタン（image_26.png全体）
+        let scorePanel = this.add.image(200, 225, 'score_attack_panel').setInteractive().setScale(0.35);
+        this.setupPanelButton(scorePanel, () => {
+            // ここでいままでの「ステージ選択シーン（ジャンル選択）」へ飛ばす
+            this.scene.start('StageSelectScene'); 
+        });
+
+        let overlay = this.add.rectangle(200, 415, storyPanel.displayWidth, storyPanel.displayHeight, 0x000000, 0.6);
+        
+        // ③ 「COMING SOON」や「準備中」の文字を重ねる
+        let comingSoonText = this.add.text(200, 415, '【 準備中 】', {
+            fontSize: '22px',
             fill: '#ffffff',
             stroke: '#000000',
             strokeThickness: 4,
             fontFamily: 'sans-serif'
         }).setOrigin(0.5);
 
-        // 2. モード選択用のボタンたちを配置
-        // メニュー画面と同じ配列管理スタイルにするとすっきりします！
-        const modeItems = [
-            { key: 'score_attack_btn', scene: 'StageSelectScene', y: 220, fallbackText: 'スコアアタック' },
-            { key: 'quest_btn',        scene: 'QuestMapScene',    y: 300, fallbackText: 'クエストモード' },
-            { key: 'back_to_menu',     scene: 'MenuScene',        y: 450, fallbackText: 'メニューに戻る' }
-        ];
+        // 3. メニューに戻るボタン（image_24.png）
+        // ボタン一番下（グレー/赤など）に配置
+        let backBtn = this.add.image(90, 550, 'back_btn').setInteractive().setScale(0.6);
+        this.setupPanelButton(backBtn, () => {
+            this.scene.start('MenuScene');
+        });
+    }
 
-        modeItems.forEach((item) => {
-            this.createImageButton(200, item.y, item.key, 0.63, () => {
-                if (item.scene === 'QuestMapScene') {
-                    // クエストモードがまだ未実装なら仮のアラート、実装したらシーン遷移
-                    // this.scene.start(item.scene);
-                    alert('クエストモードは現在準備中だよ！');
-                } else {
-                    this.scene.start(item.scene);
+    // パネル全体を、あの気持ちよく縮んで跳ねるボタン化する共通関数
+    setupPanelButton(btn, callback) {
+        // メニュー画面と共通の、あの気持ちよく縮んで跳ねるボタン関数
+        // 画像が存在しない場合の保険としてテキストボタンを兼ねることもできますが、
+        // メニューと同じように画像ボタンとして生成します
+        btn.on('pointerdown', () => {
+            // ① 押した瞬間に少し暗くする（0xaaaaaaで少しグレーっぽく・暗くなる）
+            btn.setTint(0xaaaaaa);
+
+            // ② 縮んでからピョンと跳ね返るTweenアニメーション
+            // 連続タップに対応するため前の動きを止める
+            this.tweens.killTweensOf(btn); 
+            this.tweens.add({
+                targets: btn,
+                scaleX: btn.scaleX * 0.95, // ギュッと縮む
+                scaleY: btn.scaleY * 0.95,
+                duration: 150,
+                yoyo: true,           // 往復させて跳ね返り感を出す
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    // アニメーションが終わったら色を戻す＆コールバック（シーン遷移など）を実行
+                    btn.clearTint();
+                    callback();
                 }
             });
         });
+
+        // ホバー時のエフェクト（PCブラウザ向け、任意）
+        btn.on('pointerover', () => { btn.setTint(0xdddddd); });
+        btn.on('pointerout', () => { btn.clearTint(); });
     }
 
     // メニュー画面と共通の、あの気持ちよく縮んで跳ねるボタン関数
@@ -306,8 +344,8 @@ class StageSelectScene extends Phaser.Scene {
         });
 
         // 戻るボタン
-        this.createTextButton(200, 520, 'メニューへ戻る', () => {
-            this.scene.start('MenuScene');
+        this.createTextButton(200, 520, 'ゲームモード選択シーンに戻る', () => {
+            this.scene.start('ModeSelectScene');
         },false);
     }
 
@@ -726,7 +764,7 @@ create() {
             enemy.hpPanel = this.drawEnemyHP(enemy.x, enemy.y);
         }
 
-// 選択されたステージとレベルを組み合わせる（変数名を this.currentStage に合わせる）
+        // 選択されたステージとレベルを組み合わせる（変数名を this.currentStage に合わせる）
         let stageType = this.currentStage || 'addition'; 
         let csvKey = `${stageType}_lv${level}`; 
         let fileContent = this.cache.text.get(csvKey);
@@ -1015,33 +1053,70 @@ create() {
                     this.james.y = this.james.originalY;
 
                     // ★ーーー ここからランキング記録の保存処理を追加 ーーー★
-                    let stage = this.currentStage; // 'addition' などのステージ名
-                    
-                    // プレイヤー情報の取得（登録されていない場合の保険として '0000' や '名無し' を用意）
-                    let playerId = localStorage.getItem('player_id') || '0000';
-                    let playerName = localStorage.getItem('player_name') || '名無し';
+let stage = this.currentStage; // 'addition' などのステージ名
+ 
+// プレイヤー情報の取得
+let playerId = localStorage.getItem('player_id') || '0000';
+let playerName = localStorage.getItem('player_name') || '名無し';
 
-                    // 1. スコアの保存チェック
-                    let oldScoreData = JSON.parse(localStorage.getItem(`${stage}_rank_score_data`)) || { value: 0 };
-                    if (this.score > (oldScoreData.value || 0)) {
-                        let newScoreData = { value: this.score, id: playerId, name: playerName };
-                        localStorage.setItem(`${stage}_rank_score_data`, JSON.stringify(newScoreData));
-                    }
+// 1. スコアの保存チェック
+let oldScoreData = JSON.parse(localStorage.getItem(`${stage}_rank_score_data`)) || { value: 0 };
+let scoreUpdated = false;
+if (this.score > (oldScoreData.value || 0)) {
+    let newScoreData = { value: this.score, id: playerId, name: playerName };
+    localStorage.setItem(`${stage}_rank_score_data`, JSON.stringify(newScoreData));
+    scoreUpdated = true;
+}
 
-                    // 2. コンボの保存チェック
-                    let oldComboData = JSON.parse(localStorage.getItem(`${stage}_rank_combo_data`)) || { value: 0 };
-                    if (this.maxCombo > (oldComboData.value || 0)) {
-                        let newComboData = { value: this.maxCombo, id: playerId, name: playerName };
-                        localStorage.setItem(`${stage}_rank_combo_data`, JSON.stringify(newComboData));
-                    }
+// 2. コンボの保存チェック
+let oldComboData = JSON.parse(localStorage.getItem(`${stage}_rank_combo_data`)) || { value: 0 };
+let comboUpdated = false;
+if (this.maxCombo > (oldComboData.value || 0)) {
+    let newComboData = { value: this.maxCombo, id: playerId, name: playerName };
+    localStorage.setItem(`${stage}_rank_combo_data`, JSON.stringify(newComboData));
+    comboUpdated = true;
+}
 
-                    // 3. 討伐数の保存チェック
-                    let oldKillData = JSON.parse(localStorage.getItem(`${stage}_rank_kill_data`)) || { value: 0 };
-                    if (this.killCount > (oldKillData.value || 0)) {
-                        let newKillData = { value: this.killCount, id: playerId, name: playerName };
-                        localStorage.setItem(`${stage}_rank_kill_data`, JSON.stringify(newKillData));
-                    }
-                    // ★ーーーーーーーーーーーーーーーーーーーーーーーーーーーー★
+// 3. 討伐数の保存チェック
+let oldKillData = JSON.parse(localStorage.getItem(`${stage}_rank_kill_data`)) || { value: 0 };
+let killUpdated = false;
+if (this.killCount > (oldKillData.value || 0)) {
+    let newKillData = { value: this.killCount, id: playerId, name: playerName };
+    localStorage.setItem(`${stage}_rank_kill_data`, JSON.stringify(newKillData));
+    killUpdated = true;
+}
+
+// ★ Firebase (Firestore) へデータを送信する処理
+(async () => {
+    try {
+        const { getFirestore, doc, setDoc, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js");
+        const db = getFirestore();
+
+        // プレイヤーごとのドキュメントに、エリアごとのデータを保存
+        // 例: areas という項目の中に stageごとのスコアやコンボを持たせる形にします
+        let updateData = {
+            lastPlayed: serverTimestamp()
+        };
+
+        // 各ステージごとのオブジェクトとして保存（例: areas.addition = { score: 100, maxCombo: 10, killCount: 5 }）
+        // ※Firestoreのネストされたフィールド更新を行います
+        await setDoc(doc(db, "players", playerId), {
+            areas: {
+                [stage]: {
+                    score: Math.max(this.score, oldScoreData.value || 0),
+                    maxCombo: Math.max(this.maxCombo, oldComboData.value || 0),
+                    killCount: Math.max(this.killCount, oldKillData.value || 0),
+                    updatedAt: serverTimestamp()
+                }
+            }
+        }, { merge: true });
+
+        console.log("Firestoreへのステージ成績保存成功！");
+    } catch (e) {
+        console.error("Firestoreへのステージ成績保存に失敗しました: ", e);
+    }
+})();
+// ★ーーーーーーーーーーーーーーーーーーーーーーーーーーーー★
 
                     this.time.delayedCall(1500, () => {
                         this.scene.start('GameOverScene', { score: this.score });
@@ -1212,7 +1287,7 @@ class ProfileScene extends Phaser.Scene {
             color: '#1a1a2e'
         }).setOrigin(0.5).setInteractive();
 
-        saveText.on('pointerdown', () => {
+        saveText.on('pointerdown', async () => {
             // 入力された値を取得して保存
             let grade = gradeInput.value.trim();
             let cls = classInput.value.trim();
@@ -1224,10 +1299,10 @@ class ProfileScene extends Phaser.Scene {
                 return;
             }
 
-            // 番号を自動で2桁に整える処理（例: 5番なら "05"、22番なら "22" にする）
+            // 番号を自動で2桁に整える処理
             let formattedNum = num.padStart(2, '0');
 
-            // 学年 + クラス + 整えた番号で「2022」や「2222」のIDを作る
+            // 学年 + クラス + 整えた番号でIDを作る
             let playerId = `${grade}${cls}${formattedNum}`;
 
             // ローカルストレージに保存
@@ -1235,10 +1310,32 @@ class ProfileScene extends Phaser.Scene {
             localStorage.setItem('player_class', cls);
             localStorage.setItem('player_number', num);
             localStorage.setItem('player_name', name);
-            localStorage.setItem('player_id', playerId); // 結合したIDも保存しておく
+            localStorage.setItem('player_id', playerId);
 
+            // ★ ここでFirebase (Firestore) にデータを送信！
+           // ★ ここでFirebase (Firestore) にデータを送信！
+            try {
+                // Firestoreの機能を読み込む（HTML側で初期化したappを使用）
+                const { getFirestore, doc, setDoc, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js");
+                const db = getFirestore();
+
+                // players コレクションの playerId のドキュメントに保存
+                await setDoc(doc(db, "players", playerId), {
+                    grade: grade,
+                    class: cls,
+                    number: formattedNum,
+                    playerName: name,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+
+                console.log("Firestoreへのプレイヤー登録成功！");
+            } catch (e) {
+                console.error("Firestoreへの保存に失敗しました: ", e);
+            }
+
+            // 👇 ここを修正！！！
             // 入力用HTML要素を画面から削除してからメニューへ戻る
-            this.removeInputs([gradeInput, classInput, numberInput, nameInput]);
+            this.removeInputs([gradeInput, classInput, numberInput, nameInput]); 
             this.scene.start('MenuScene');
         });
 
@@ -1256,11 +1353,9 @@ class ProfileScene extends Phaser.Scene {
         input.placeholder = placeholder;
         input.style.position = 'absolute';
         
-        // Phaserのcanvasの位置に合わせて位置を自動調整させるためのスタイル
         let canvas = document.querySelector('canvas');
         let rect = canvas.getBoundingClientRect();
         
-        // 画面比率を考慮して配置
         input.style.left = `${rect.left + (x / 400) * rect.width}px`;
         input.style.top = `${rect.top + (y / 600) * rect.height}px`;
         input.style.width = `${(width / 400) * rect.width}px`;
@@ -1286,7 +1381,7 @@ class ProfileScene extends Phaser.Scene {
     }
 }
 
-    // --- ランキングシーン ---
+// --- ランキングシーン ---
 class RankingScene extends Phaser.Scene {
     constructor() { super('RankingScene'); }
 
@@ -1316,7 +1411,6 @@ class RankingScene extends Phaser.Scene {
         }).setOrigin(0.5);
 
         // --- ステージ管理用のデータ ---
-        // システム用のキーと、画面に表示する日本語名のセット
         this.stages = [
             { key: 'addition',    name: 'たし算' },
             { key: 'subtraction', name: 'ひき算' },
@@ -1331,17 +1425,17 @@ class RankingScene extends Phaser.Scene {
 
         // 1. スコア
         this.add.text(60, startY, '🏆 最高スコア', { fontSize: '18px', fontFamily: '"Kanit"', color: '#ffffff', fontStyle: 'bold' });
-        this.scoreValText = this.add.text(340, startY, '000', { fontSize: '22px', fontFamily: '"Kanit"', color: '#e2c673', fontStyle: 'bold' }).setOrigin(1, 0);
+        this.scoreValText = this.add.text(340, startY, '読み込み中...', { fontSize: '18px', fontFamily: '"Kanit"', color: '#e2c673', fontStyle: 'bold' }).setOrigin(1, 0);
         this.scorePlayerText = this.add.text(340, startY + 24, '----  ---------', { fontSize: '14px', fontFamily: '"Kanit"', color: '#a0a0a0' }).setOrigin(1, 0);
 
         // 2. コンボ
         this.add.text(60, startY + spacing, '🔥 最高コンボ', { fontSize: '18px', fontFamily: '"Kanit"', color: '#ffffff', fontStyle: 'bold' });
-        this.comboValText = this.add.text(340, startY + spacing, '0 COMBO', { fontSize: '22px', fontFamily: '"Kanit"', color: '#32cd32', fontStyle: 'bold' }).setOrigin(1, 0);
+        this.comboValText = this.add.text(340, startY + spacing, '読み込み中...', { fontSize: '18px', fontFamily: '"Kanit"', color: '#32cd32', fontStyle: 'bold' }).setOrigin(1, 0);
         this.comboPlayerText = this.add.text(340, startY + spacing + 24, '----  ---------', { fontSize: '14px', fontFamily: '"Kanit"', color: '#a0a0a0' }).setOrigin(1, 0);
 
         // 3. 討伐数
         this.add.text(60, startY + spacing * 2, '⚔️ 最高討伐数', { fontSize: '18px', fontFamily: '"Kanit"', color: '#ffffff', fontStyle: 'bold' });
-        this.killValText = this.add.text(340, startY + spacing * 2, '０体', { fontSize: '22px', fontFamily: '"Kanit"', color: '#ff6b6b', fontStyle: 'bold' }).setOrigin(1, 0);
+        this.killValText = this.add.text(340, startY + spacing * 2, '読み込み中...', { fontSize: '18px', fontFamily: '"Kanit"', color: '#ff6b6b', fontStyle: 'bold' }).setOrigin(1, 0);
         this.killPlayerText = this.add.text(340, startY + spacing * 2 + 24, '----  ---------', { fontSize: '14px', fontFamily: '"Kanit"', color: '#a0a0a0' }).setOrigin(1, 0);
 
         // --- ステージ切り替え用のUI（← ステージ名 →） ---
@@ -1358,7 +1452,7 @@ class RankingScene extends Phaser.Scene {
         leftArrow.on('pointerdown', () => {
             this.currentStageIndex--;
             if (this.currentStageIndex < 0) {
-                this.currentStageIndex = this.stages.length - 1; // 最初から左を押したら一番最後にループ
+                this.currentStageIndex = this.stages.length - 1;
             }
             this.updateRankingDisplay();
         });
@@ -1366,7 +1460,7 @@ class RankingScene extends Phaser.Scene {
         rightArrow.on('pointerdown', () => {
             this.currentStageIndex++;
             if (this.currentStageIndex >= this.stages.length) {
-                this.currentStageIndex = 0; // 最後から右を押したら一番最初にループ
+                this.currentStageIndex = 0;
             }
             this.updateRankingDisplay();
         });
@@ -1394,33 +1488,75 @@ class RankingScene extends Phaser.Scene {
         });
     }
 
-    // --- 選択されているステージに合わせて数値を書き換える関数 ---
-    updateRankingDisplay() {
+    // --- サーバー（Firestore）から全プレイヤーの記録を集めて最高値を探して表示する関数 ---
+    async updateRankingDisplay() {
         let currentStageObj = this.stages[this.currentStageIndex];
         let stageKey = currentStageObj.key;
 
-        // ステージ名の更新（「- たし算 -」の形に）
+        // ステージ名の更新
         this.stageTitleText.setText(`- ${currentStageObj.name} -`);
 
-        // --- 保存されたスコアとプレイヤー情報を取得（_data形式に対応） ---
-        let scoreData = JSON.parse(localStorage.getItem(`${stageKey}_rank_score_data`)) || { value: 0, id: '----', name: '--------' };
-        let comboData = JSON.parse(localStorage.getItem(`${stageKey}_rank_combo_data`)) || { value: 0, id: '----', name: '--------' };
-        let killData  = JSON.parse(localStorage.getItem(`${stageKey}_rank_kill_data`))  || { value: 0, id: '----', name: '--------' };
+        // 初期値（データが見つからない場合）
+        let bestScore = { value: 0, id: '----', name: '--------' };
+        let bestCombo = { value: 0, id: '----', name: '--------' };
+        let bestKill  = { value: 0, id: '----', name: '--------' };
 
+        try {
+            // Firestoreからデータを取得する機能をインポート
+            const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js");
+            const db = getFirestore();
+            
+            // players コレクションの全員分のデータを一括取得
+            const querySnapshot = await getDocs(collection(db, "players"));
+
+            querySnapshot.forEach((doc) => {
+                let data = doc.data();
+                let playerId = doc.id;
+                let playerName = data.playerName || '名無し';
+
+                // 各プレイヤーがこのステージのデータを保持しているか確認
+                if (data.areas && data.areas[stageKey]) {
+                    let stageData = data.areas[stageKey];
+
+                    // 1. 最高スコアの比較
+                    let sc = stageData.score || 0;
+                    if (sc > bestScore.value) {
+                        bestScore = { value: sc, id: playerId, name: playerName };
+                    }
+
+                    // 2. 最高コンボの比較
+                    let cb = stageData.maxCombo || 0;
+                    if (cb > bestCombo.value) {
+                        bestCombo = { value: cb, id: playerId, name: playerName };
+                    }
+
+                    // 3. 最高討伐数の比較
+                    let kl = stageData.killCount || 0;
+                    if (kl > bestKill.value) {
+                        bestKill = { value: kl, id: playerId, name: playerName };
+                    }
+                }
+            });
+
+        } catch (e) {
+            console.error("ランキングデータの取得に失敗しました: ", e);
+        }
+
+        // --- 画面への反映 ---
         // 1. スコア反映
-        this.scoreValText.setText(String(scoreData.value).padStart(3, '０'));
-        this.scorePlayerText.setText(`${scoreData.id}  ${scoreData.name}`);
+        this.scoreValText.setText(String(bestScore.value).padStart(3, '０'));
+        this.scorePlayerText.setText(`${bestScore.id}  ${bestScore.name}`);
 
         // 2. コンボ反映
-        this.comboValText.setText(comboData.value + ' COMBO');
-        this.comboPlayerText.setText(`${comboData.id}  ${comboData.name}`);
+        this.comboValText.setText(bestCombo.value + ' COMBO');
+        this.comboPlayerText.setText(`${bestCombo.id}  ${bestCombo.name}`);
 
         // 3. 討伐数反映
-        let k = String(killData.value).replace(/[0-9]/g, function(s) {
+        let kStr = String(bestKill.value).replace(/[0-9]/g, function(s) {
             return String.fromCharCode(s.charCodeAt(0) + 0xFEE0);
         });
-        this.killValText.setText(k + '体');
-        this.killPlayerText.setText(`${killData.id}  ${killData.name}`);
+        this.killValText.setText(kStr + '体');
+        this.killPlayerText.setText(`${bestKill.id}  ${bestKill.name}`);
     }
 }
 
@@ -1812,6 +1948,27 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+</script>
+
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-analytics.js";
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyDumOhzFaOPvCqGHdgEK0HDSyZXrhsP82c",
+    authDomain: "jame-s-math-quest.firebaseapp.com",
+    projectId: "jame-s-math-quest",
+    storageBucket: "jame-s-math-quest.firebasestorage.app",
+    messagingSenderId: "508884697107",
+    appId: "1:508884697107:web:9b60a528ecb363d3d67fe6",
+    measurementId: "G-0XZE0CNHYT"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
 </script>
 </body>
 </html>
