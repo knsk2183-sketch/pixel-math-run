@@ -121,22 +121,19 @@ class MenuScene extends Phaser.Scene {
     constructor() { super('MenuScene'); }
 
     preload() {
-    this.load.image('menyu', 'menyu.png');
-    this.load.image('stage_select', 'gamemode.png');
-    this.load.image('player_register', 'player_register.png');
-    this.load.image('ranking', 'ranking.png');
-    this.load.image('shop', 'shop.png');
-    this.load.image('items', 'items.png');
-    this.load.image('reset_data', 'reset_data.png');
-    this.load.image('back_to_title', 'back_to_title.png');
-}
+        this.load.image('menyu', 'menyu.png');
+        this.load.image('stage_select', 'gamemode.png');
+        this.load.image('player_register', 'player_register.png');
+        this.load.image('ranking', 'ranking.png');
+        this.load.image('shop', 'shop.png');
+        this.load.image('items', 'items.png');
+        this.load.image('reset_data', 'reset_data.png');
+        this.load.image('back_to_title', 'back_to_title.png');
+    }
 
     create() {
         // 背景とタイトル
         this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
-        //「メニュー」枠 黒い薄い枠は消してます
-        //let headerBg = this.add.rectangle(200, 80, 175, 60, 0x000000, 0.5);
-        //headerBg.setOrigin(0.5);
         this.add.image(200, 70, 'menyu').setScale(0.13); 
 
         // 各ボタンの画像キーと移動先シーン、配置Y座標などを配列で管理
@@ -156,16 +153,32 @@ class MenuScene extends Phaser.Scene {
             let needsSE = (item.scene !== 'TitleScene'); 
 
             this.createImageButton(200, item.y, item.key, 0.63, () => {
+                // ▼ ここでボタンの種類（シーン名）によって処理を分岐する！
                 if (item.scene === 'ResetData') {
                     // ★ 確認ダイアログを出す
                     let result = window.confirm('本当にすべてのデータをリセットしてもよろしいですか？');
                     
-                    // 「OK」が押されたときだけリセットする
+                    // 「OK」が押されたときだけローカル＆サーバーのデータを消去する
                     if (result) {
+                        let playerId = localStorage.getItem('player_id');
                         localStorage.clear();
+
+                        if (playerId) {
+                            (async () => {
+                                try {
+                                    const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js");
+                                    const db = getFirestore();
+                                    await deleteDoc(doc(db, "players", playerId));
+                                    console.log("サーバー上のプレイヤーデータも削除しました");
+                                } catch (e) {
+                                    console.error("サーバーデータの削除に失敗しました: ", e);
+                                }
+                            })();
+                        }
                         alert('データをすべてリセットしました！');
                     }
                 } else {
+                    // リセット以外ならそれぞれのシーンへ移動
                     this.scene.start(item.scene);
                 }
             }, needsSE);
@@ -173,24 +186,21 @@ class MenuScene extends Phaser.Scene {
     }
 
     // 画像ボタンを生成する共通関数
-        createImageButton(x, y, key, scale, callback, playSE = true) {
+    createImageButton(x, y, key, scale, callback, playSE = true) {
         let btn = this.add.image(x, y, key).setInteractive().setScale(scale);
 
         btn.on('pointerdown', () => {
-            // ① 押した瞬間に少し暗くする（0xaaaaaaで少しグレーっぽく・暗くなる）
             btn.setTint(0xaaaaaa);
 
-            // ② 縮んでからピョンと跳ね返るTweenアニメーション
-            this.tweens.killTweensOf(btn); // 連続タップに対応するため前の動きを止める
+            this.tweens.killTweensOf(btn);
             this.tweens.add({
                 targets: btn,
-                scaleX: scale * 0.85, // ギュッと縮む
+                scaleX: scale * 0.85,
                 scaleY: scale * 0.85,
                 duration: 150,
-                yoyo: true,           // 往復させて跳ね返り感を出す
+                yoyo: true,
                 ease: 'Quad.easeInOut',
                 onComplete: () => {
-                    // アニメーションが終わったら色を戻す＆コールバック（シーン遷移など）を実行
                     btn.clearTint();
                     btn.setScale(scale);
                     callback();
