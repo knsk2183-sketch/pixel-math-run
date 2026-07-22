@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>Pixel Math Run</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
@@ -27,10 +28,15 @@ class TitleScene extends Phaser.Scene {
         this.load.audio('bgm', 'Titlesong.mp3');
         this.load.audio('start', 'start.mp3');
         this.load.image('title_back', 'titleback.jpg');
+        this.load.image('kane', 'kane.png');
+        
     }
 
     create() {
         this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+
+        
+
 
         // BGMの取得・再生
         let bgm = this.sound.get('bgm');
@@ -42,106 +48,237 @@ class TitleScene extends Phaser.Scene {
             if (!this.bgm.isPlaying) this.bgm.play();
         }
 
-        this.add.rectangle(200, 300, 360, 560).setStrokeStyle(10, 0xFFFFFF);
         this.add.sprite(195, 150, 'title_logo').setScale(0.36); 
-        this.add.sprite(200, 330, 'james_title').setScale(0.15);
-
-        let currentHighScore = localStorage.getItem('pixelMathHighScore') || 0;
-        this.add.text(200, 430, '最高スコア: ' + currentHighScore, { 
-            fontSize: '16px', color: '#000000', stroke: '#FFFFFF', strokeThickness: 4 
-        }).setOrigin(0.5);
+        // 影を追加
+        let jamesX = 200;
+        let jamesY = 400;
+        this.add.ellipse(jamesX, jamesY + 40, 130, 20, 0x000000, 0.4);
+        this.add.sprite(200, 370, 'james_title').setScale(0.15);
+       
         
         // ★関数を使ってボタンを配置（音なしで設定）
-        this.createImageButton(200, 500, 'start_btn', 0.30, () => {
+        this.createImageButton(200, 500, 'start_btn', 0.25, () => {
             this.scene.start('MenuScene');
         }, false);
+
+        let tapText = this.add.text(200, 550, '- TAP TO START -', {
+            fontSize: '15px',
+            fontFamily: '"Kanit"',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5);
+
+        // 文字をフワッと点滅させるアニメーション（お好みで！）
+        this.tweens.add({
+            targets: tapText,
+            alpha: 0.2,          // 薄くなる透明度
+            duration: 2000,       // 0.8秒かけて
+            yoyo: true,          // 往復する
+            repeat: -1           // 無限ループ
+        });
     }
 
+
     // ★画像ボタン用関数（クラスの中に配置）
-    createImageButton(x, y, key, scale, callback, playSE = false) {
-        let btn = this.add.sprite(x, y, key).setScale(scale).setInteractive();
+    createImageButton(x, y, key, scale, callback, playSE = true) {
+        let btn = this.add.image(x, y, key).setInteractive().setScale(scale);
 
         btn.on('pointerdown', () => {
-            btn.setScale(scale * 0.9);
+            // ① 押した瞬間に少し暗くする（0xaaaaaaで少しグレーっぽく・暗くなる）
             btn.setTint(0xaaaaaa);
+
+            // ② 縮んでからピョンと跳ね返るTweenアニメーション
+            this.tweens.killTweensOf(btn); // 連続タップに対応するため前の動きを止める
+            this.tweens.add({
+                targets: btn,
+                scaleX: scale * 0.85, // ギュッと縮む
+                scaleY: scale * 0.85,
+                duration: 150,
+                yoyo: true,           // 往復させて跳ね返り感を出す
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    // アニメーションが終わったら色を戻す＆コールバック（シーン遷移など）を実行
+                    btn.clearTint();
+                    btn.setScale(scale);
+                    
+                    if (playSE) {
+                        this.sound.play('start', { volume: 0.5 });
+                    }
+                    callback();
+                }
+            });
         });
 
-        btn.on('pointerup', () => {
-            btn.setScale(scale);
-            btn.clearTint();
-            
-            if (playSE) {
-                this.sound.play('start', { volume: 0.5 });
-            }
-            callback(); 
-        });
+        return btn;
+    }
+}
+    
+// --- メニューシーン ---
+class MenuScene extends Phaser.Scene {
+    constructor() { super('MenuScene'); }
 
-        btn.on('pointerout', () => {
-            btn.setScale(scale);
-            btn.clearTint();
+    preload() {
+    this.load.image('menyu', 'menyu.png');
+    this.load.image('stage_select', 'stage_select.png');
+    this.load.image('player_register', 'player_register.png');
+    this.load.image('ranking', 'ranking.png');
+    this.load.image('shop', 'shop.png');
+    this.load.image('items', 'items.png');
+    this.load.image('reset_data', 'reset_data.png');
+    this.load.image('back_to_title', 'back_to_title.png');
+}
+
+    create() {
+        // 背景とタイトル
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+        //「メニュー」枠 黒い薄い枠は消してます
+        //let headerBg = this.add.rectangle(200, 80, 175, 60, 0x000000, 0.5);
+        //headerBg.setOrigin(0.5);
+        this.add.image(200, 70, 'menyu').setScale(0.13); 
+
+        // 各ボタンの画像キーと移動先シーン、配置Y座標などを配列で管理
+        const menuItems = [
+            { key: 'stage_select', scene: 'ModeSelectScene', y: 165 },    
+            { key: 'player_register', scene: 'ProfileScene', y: 220 },
+            { key: 'ranking', scene: 'RankingScene', y: 275 },
+            { key: 'shop', scene: 'ShopScene', y: 330 },
+            { key: 'items', scene: 'InventoryScene', y: 385 },
+            { key: 'reset_data', scene: 'ResetData', y: 440 },
+            { key: 'back_to_title', scene: 'TitleScene', y: 495 }
+        ];
+
+        // ループ処理でボタンを一気に生成
+        menuItems.forEach((item) => {
+            // 「タイトルへ戻る」ボタンの時だけ効果音を鳴らさない（false）にする
+            let needsSE = (item.scene !== 'TitleScene'); 
+
+            this.createImageButton(200, item.y, item.key, 0.63, () => {
+                if (item.scene === 'ResetData') {
+                    // ★ 確認ダイアログを出す
+                    let result = window.confirm('本当にすべてのデータをリセットしてもよろしいですか？');
+                    
+                    // 「OK」が押されたときだけリセットする
+                    if (result) {
+                        localStorage.clear();
+                        alert('データをすべてリセットしました！');
+                    }
+                } else {
+                    this.scene.start(item.scene);
+                }
+            }, needsSE);
+        });
+    }
+
+    // 画像ボタンを生成する共通関数
+        createImageButton(x, y, key, scale, callback, playSE = true) {
+        let btn = this.add.image(x, y, key).setInteractive().setScale(scale);
+
+        btn.on('pointerdown', () => {
+            // ① 押した瞬間に少し暗くする（0xaaaaaaで少しグレーっぽく・暗くなる）
+            btn.setTint(0xaaaaaa);
+
+            // ② 縮んでからピョンと跳ね返るTweenアニメーション
+            this.tweens.killTweensOf(btn); // 連続タップに対応するため前の動きを止める
+            this.tweens.add({
+                targets: btn,
+                scaleX: scale * 0.85, // ギュッと縮む
+                scaleY: scale * 0.85,
+                duration: 150,
+                yoyo: true,           // 往復させて跳ね返り感を出す
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    // アニメーションが終わったら色を戻す＆コールバック（シーン遷移など）を実行
+                    btn.clearTint();
+                    btn.setScale(scale);
+                    callback();
+                }
+            });
         });
 
         return btn;
     }
 }
 
-    
+// --- ゲームモード選択シーン ---
+// --- ゲームモード選択シーン ---
+class ModeSelectScene extends Phaser.Scene {
+    constructor() {
+        super('ModeSelectScene');
+    }
 
-// --- メニューシーン ---
-class MenuScene extends Phaser.Scene {
-    constructor() { super('MenuScene'); }
+    preload() {
+        // 必要に応じてモード選択用のボタン画像をロード
+        // すでにメニューで使っている画像や、新しく用意した画像を指定
+        this.load.image('title_back', 'title_back.png'); // 背景
+        this.load.image('mode_title', 'mode_title.png'); // 「ゲームモード」の見出し画像（文字でもOK）
+        this.load.image('score_attack_btn', 'score_attack.png'); // スコアアタックボタン
+        this.load.image('quest_btn', 'quest.png');             // クエストモードボタン
+        this.load.image('back_to_menu', 'back_to_title.png');  // メニューに戻る用（または専用の戻るボタン）
+    }
 
     create() {
+        // 1. 背景とヘッダー
         this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
-        this.add.text(200, 100, 'メニュー', { fontSize: '32px', color: '#000' }).setOrigin(0.5);
+        
+        // ヘッダー部分（テキストにする場合のデザイン例）
+        this.add.image(200, 70, 'menu_header'); // もしヘッダー画像があれば
+        this.add.text(200, 70, 'ゲームモード', {
+            fontSize: '28px',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 4,
+            fontFamily: 'sans-serif'
+        }).setOrigin(0.5);
 
-        const menuItems = [
-            { text: 'ステージ選択', scene: 'StageSelectScene' },
-            { text: 'ランキング', scene: 'RankingScene' },
-            { text: 'ショップ', scene: 'ShopScene' },
-            { text: 'アイテム一覧', scene: 'ItemScene' },
-            { text: 'タイトルへ戻る', scene: 'TitleScene' },
+        // 2. モード選択用のボタンたちを配置
+        // メニュー画面と同じ配列管理スタイルにするとすっきりします！
+        const modeItems = [
+            { key: 'score_attack_btn', scene: 'StageSelectScene', y: 220, fallbackText: 'スコアアタック' },
+            { key: 'quest_btn',        scene: 'QuestMapScene',    y: 300, fallbackText: 'クエストモード' },
+            { key: 'back_to_menu',     scene: 'MenuScene',        y: 450, fallbackText: 'メニューに戻る' }
         ];
 
-        menuItems.forEach((item, i) => {
-            this.createTextButton(200, 200 + (i * 60), item.text, () => {
-                this.scene.start(item.scene);
-            }, false);
+        modeItems.forEach((item) => {
+            this.createImageButton(200, item.y, item.key, 0.63, () => {
+                if (item.scene === 'QuestMapScene') {
+                    // クエストモードがまだ未実装なら仮のアラート、実装したらシーン遷移
+                    // this.scene.start(item.scene);
+                    alert('クエストモードは現在準備中だよ！');
+                } else {
+                    this.scene.start(item.scene);
+                }
+            });
         });
     }
 
-    // ★ここが抜けていました！これを入れてください
-    createTextButton(x, y, text, callback, playSE = true) {
-    let btn = this.add.text(x, y, text, { 
-        fontSize: '24px', 
-        backgroundColor: '#444', 
-        padding: { x: 20, y: 10 } 
-    }).setOrigin(0.5).setInteractive();
+    // メニュー画面と共通の、あの気持ちよく縮んで跳ねるボタン関数
+    createImageButton(x, y, key, scale, callback) {
+        // 画像が存在しない場合の保険としてテキストボタンを兼ねることもできますが、
+        // メニューと同じように画像ボタンとして生成します
+        let btn = this.add.image(x, y, key).setInteractive().setScale(scale);
 
-    // 押した時の反応を「色」と「サイズ」だけに絞る
-    btn.on('pointerdown', () => {
-        btn.setBackgroundColor('#111');
-        btn.setScale(0.95); // 少し小さくするだけで「押した感」が出る
-        
-        if (playSE) {
-            this.sound.play('start', { volume: 0.5 });
-        }
-        callback();
-    });
+        btn.on('pointerdown', () => {
+            btn.setTint(0xaaaaaa);
+            this.tweens.killTweensOf(btn);
+            this.tweens.add({
+                targets: btn,
+                scaleX: scale * 0.85,
+                scaleY: scale * 0.85,
+                duration: 150,
+                yoyo: true,
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    btn.clearTint();
+                    btn.setScale(scale);
+                    callback();
+                }
+            });
+        });
 
-    btn.on('pointerup', () => {
-        btn.setBackgroundColor('#444');
-        btn.setScale(1.0);
-    });
-
-    btn.on('pointerout', () => {
-        btn.setBackgroundColor('#444');
-        btn.setScale(1.0);
-    });
-
-    return btn;
+        return btn;
     }
-
 }
 
 //---ステージ選択シーン---
@@ -171,7 +308,7 @@ class StageSelectScene extends Phaser.Scene {
         // 戻るボタン
         this.createTextButton(200, 520, 'メニューへ戻る', () => {
             this.scene.start('MenuScene');
-        });
+        },false);
     }
 
     // 関数定義：playSE という引数を追加 (デフォルトで true)
@@ -209,20 +346,13 @@ createTextButton(x, y, text, callback, playSE = true) {
 }
 
 // --- ゲームシーン ---
-
 class GameScene extends Phaser.Scene {
 
     constructor() { super('GameScene'); }
-
         init(data) {
-
             this.score = data.score || 0;
-
             this.currentStage = data.stage || 'addition'; // メニューからの情報を受け取る
-
         }
-
-   
 
     preload() {
         this.load.image('penguin1', 'penguin1.png');
@@ -233,17 +363,89 @@ class GameScene extends Phaser.Scene {
         this.load.audio('game_bgm', 'gamebgm.mp3');
         this.load.image('pannti1', 'pannti1.png');
         this.load.image('pannti2', 'pannti2.png');
-        this.load.image('teki1', 'teki1.png');
         this.load.audio('damage', 'damage.mp3');
+        this.load.image('damagepg', 'damagepg.png');
+        this.load.image('gameoverpg', 'gameoverpg.png');
+        this.load.image('kanepg', 'kanepg.png');
+        this.load.audio('kane', 'kane.mp3');
+        this.load.image('kane', 'kane.png');
+        for (let i = 1; i <= 7; i++) {
+            this.load.image(`sura${i}`, `sura${i}.png`);
+        }
+   
+
+        //問題の追加(CSV)
+        //たし算
+        this.load.text('addition_lv1', 'elementary/addition_lv1.csv');
+        this.load.text('addition_lv2', 'elementary/addition_lv2.csv');
+        this.load.text('addition_lv3', 'elementary/addition_lv3.csv');
+        this.load.text('addition_lv4', 'elementary/addition_lv4.csv');
+        this.load.text('addition_lv5', 'elementary/addition_lv5.csv');
+
+        // ひき算
+        this.load.text('subtraction_lv1', 'elementary/subtraction_lv1.csv');
+        this.load.text('subtraction_lv2', 'elementary/subtraction_lv2.csv');
+        this.load.text('subtraction_lv3', 'elementary/subtraction_lv3.csv');
+        this.load.text('subtraction_lv4', 'elementary/subtraction_lv4.csv');
+        this.load.text('subtraction_lv5', 'elementary/subtraction_lv5.csv');
+
+        // かけ算
+        this.load.text('multiplication_lv1', 'elementary/multiplication_lv1.csv');
+        this.load.text('multiplication_lv2', 'elementary/multiplication_lv2.csv');
+        this.load.text('multiplication_lv3', 'elementary/multiplication_lv3.csv');
+        this.load.text('multiplication_lv4', 'elementary/multiplication_lv4.csv');
+        this.load.text('multiplication_lv5', 'elementary/multiplication_lv5.csv');
+
+        // わり算
+        this.load.text('division_lv1', 'elementary/division_lv1.csv');
+        this.load.text('division_lv2', 'elementary/division_lv2.csv');
+        this.load.text('division_lv3', 'elementary/division_lv3.csv');
+        this.load.text('division_lv4', 'elementary/division_lv4.csv');
+        this.load.text('division_lv5', 'elementary/division_lv5.csv');
+
     }
 
+     teki1() {
+        let rand = Phaser.Math.Between(0, 99); 
+        let cumulative = 0;
+
+        cumulative += 45;
+        if (rand < cumulative) { return 'sura1'; }
+        cumulative += 25;
+        if (rand < cumulative) { return 'sura2'; }
+        cumulative += 15;
+        if (rand < cumulative) { return 'sura3'; }
+        cumulative += 8;
+        if (rand < cumulative) { return 'sura4'; }
+        cumulative += 5;
+        if (rand < cumulative) { return 'sura5'; }
+        cumulative += 2;
+        if (rand < cumulative) { return 'sura6'; }
+        return 'sura7';
+     }
+
 create() {
+    // ジェムの所持数をロードする（保存されていなければ0個からスタート）
+        this.gemCount = localStorage.getItem('player_gems') ? parseInt(localStorage.getItem('player_gems')) : 0;
+
+        // 画面の右上あたりにジェムのテキストを表示する例
+       this.gemText = this.add.text(345, 100, '💎' + this.gemCount, {
+        fontSize: '20px',
+        fill: '#ffffff',
+        fontStyle: 'bold',
+    });
+    
+    // カメラのスクロールやズームの影響を一切受けないようにする最強の設定
+    this.gemText.setScrollFactor(0);
+    this.gemText.setDepth(9999); // どんな画像や敵よりも一番手前に表示する
+
         this.sound.stopAll();
         this.bgm = this.sound.add('game_bgm', { loop: true, volume: 0.5 });
         this.bgm.play();
 
         this.score = this.score || 0;
         this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
+        this.currentLevel = 1;
         this.add.image(200, 300, 'gameback').setDisplaySize(400, 600);
 
            this.scoreText = this.add.text(10, 10, 'スコア\n０００', {  
@@ -266,23 +468,46 @@ create() {
             strokeThickness: 5 
         });
 
+        // --- ★正解数のカウント用変数を追加 ---
+        this.correctAnswerCount = 0;
 
-        this.anims.create({ key: 'walk_anim', frames: [{ key: 'penguin1' }, { key: 'penguin2' }], frameRate: 3, repeat: -1 });
-        this.anims.create({ key: 'attack_anim', frames: [{ key: 'pannti1' }, { key: 'pannti2' }], frameRate: 4, repeat: 0 });
+        this.killCount = 0; // 討伐数のカウント用変数
+        this.killCountText = this.add.text(390, 40, '討伐数\n０体', { 
+            fontSize: '16px', 
+            fontFamily: '"Kanit"', 
+            fontStyle: 'bold',
+            color: '#e2c673', // スコアと同じ黄色
+            align: 'right',   // 右寄せ
+            stroke: '#000000', 
+            strokeThickness: 5 
+        }).setOrigin(1, 0);   // 右上を基準にして配置
 
-        this.jamesShadow = this.add.ellipse(100, 310, 70, 20, 0x000000, 0.4);
-        this.james = this.add.sprite(100, 270, 'penguin1').setScale(0.15).play('walk_anim');
+       this.levelText = this.add.text(390, 10, 'NORMAL', {
+            fontSize: '20px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#ffffff',
+            align: 'right',
+            stroke: '#000000',
+            strokeThickness: 5
+        }).setOrigin(1, 0);
+
+        this.anims.create({ key: 'walk_anim', frames: [{ key: 'penguin1' }, { key: 'penguin2' }], frameRate: 1, repeat: -1 });
+        this.anims.create({ key: 'attack_anim', frames: [{ key: 'pannti1' }, { key: 'pannti2' }], frameRate: 5, repeat: 0 });
+
+        this.jamesShadow = this.add.ellipse(100, 330, 70, 20, 0x000000, 0.4);
+        this.james = this.add.sprite(100, 275, 'penguin1').setScale(0.15).play('walk_anim');
         this.james.originalX = 100;
-        this.james.originalY = 280;
+        this.james.originalY = 275;
 
         this.james.on('animationupdate', (anim, frame) => {
             if (anim.key === 'attack_anim') {
                 if (frame.textureKey === 'pannti2') { 
                     this.james.x = this.james.originalX + 30; 
-                    this.jamesShadow.x = this.james.originalX + 30; // 影も前に動かす
+                    //this.jamesShadow.x = this.james.originalX + 30; // 影も前に動かす
                 } else { 
                     this.james.x = this.james.originalX; 
-                    this.jamesShadow.x = this.james.originalX; // 影も元の位置に戻す
+                    //this.jamesShadow.x = this.james.originalX; // 影も元の位置に戻す
                 }
             }
         });
@@ -293,7 +518,6 @@ create() {
         this.wrongCount = 0;
         let panelY = 345;
         let panelX = 50;
-
         let hpPanel = this.add.graphics();
         hpPanel.fillStyle(0x1a1a2e, 1);
         hpPanel.lineStyle(2, 0xc5a059, 1);
@@ -323,40 +547,71 @@ create() {
 
         this.startTimer();
         this.optionButtons = [];
+
+        // --- ★コンボ用UIの初期設定 ---
+        this.comboCount = 0;
+        this.maxCombo = 0;
+
+        // 背景の半透明な黒帯
+        this.comboBg = this.add.graphics();
+        this.comboBg.fillStyle(0x000000, 0.6);
+        this.comboBg.fillRect(135, 128, 130, 25); // 画面中央付近に配置
+        this.comboBg.setAlpha(0); // 最初は非表示
+
+        // コンボテキスト
+        this.comboText = this.add.text(200, 140, '', {
+            fontSize: '32px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 5
+        }).setOrigin(0.5);
+        this.comboText.setAlpha(0);
+
         this.generateQuestion();
     }
 
-    drawEnemyHP(x, y) {
-    // 敵のX座標を基準に、ジェームズのパネルと同じオフセットを適用
-    let panelX = x - 55; // 中心位置を調整
-    let panelY = y+55;    // ジェームズのパネルと同じY座標に固定
-    
-    let graphics = this.add.graphics();
-    graphics.fillStyle(0x1a1a2e, 1);
-    graphics.lineStyle(2, 0xc5a059, 1);
-    graphics.fillRoundedRect(panelX, panelY, 110, 40, 5);
-    graphics.strokeRoundedRect(panelX, panelY, 110, 40, 5);
-    
-    // ジェームズのパネルと同じフォント設定・相対座標
-    let hpLabel = this.add.text(panelX + 25, panelY + 20, 'HP', {
-        fontSize: '20px',
-        fontFamily: '"Kanit"',
-        fontStyle: 'bold',
-        color: '#ffffff'
-    }).setOrigin(0.5);
-    
-    let h1 = this.add.text(panelX + 60, panelY + 20, '♥', {
-        fontSize: '32px',
-        color: '#ff0000'
-    }).setOrigin(0.5);
-    
-    let h2 = this.add.text(panelX + 85, panelY + 20, '♥', {
-        fontSize: '32px',
-        color: '#ff0000'
-    }).setOrigin(0.5);
-    
-    return { graphics, hpLabel, h1, h2 };
-}
+    // ジェムの表示を更新する関数
+        updateGemUI() {
+            if (this.gemText) {
+            this.gemText.setText('💎 ジェム: ' + gemCount);
+            }
+        }
+  
+
+    drawEnemyHP() {
+        // 敵の位置（x, y）に依存せず、画面の固定座標（例: X=450, Y=340 など）に配置する
+        let panelX = 440 - 55; // 配置したい中心X座標を基準にする
+        let panelY = 345;      // 画面上の固定したいY座標
+        
+        let graphics = this.add.graphics();
+        graphics.fillStyle(0x1a1a2e, 1);
+        graphics.lineStyle(2, 0xc5a059, 1);
+        graphics.fillRoundedRect(panelX, panelY, 110, 40, 5);
+        graphics.strokeRoundedRect(panelX, panelY, 110, 40, 5);
+        
+        // フォント設定・相対座標
+        let hpLabel = this.add.text(panelX + 25, panelY + 20, 'HP', {
+            fontSize: '20px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#ffffff'
+        }).setOrigin(0.5);
+        
+        let h1 = this.add.text(panelX + 60, panelY + 20, '♥', {
+            fontSize: '32px',
+            color: '#ff0000'
+        }).setOrigin(0.5);
+        
+        let h2 = this.add.text(panelX + 85, panelY + 20, '♥', {
+            fontSize: '32px',
+            color: '#ff0000'
+        }).setOrigin(0.5);
+        
+        return { graphics, hpLabel, h1, h2 };
+    }
+
 
     startTimer() {
 
@@ -393,27 +648,15 @@ create() {
             this.timer -= 0.1;
             this.timerText.setText(this.formatTimer(Math.max(0, this.timer)));
             if (this.timer <= 0) {
-                this.timerEvent.remove();
-                this.wrongCount++;
-                this.sound.play('damage');
-                if (this.wrongCount === 1) {
-                    this.heart2.setFill('#000000');
-                    this.heart2.setStroke('#000000', 3);
-                    this.startTimer();       // タイマーをリセットして次の問題へ
-                    this.generateQuestion(); // 問題を更新
-                } else {
-                    this.heart1.setFill('#000000');
-                    this.heart1.setStroke('#000000', 3);
-                    this.bgm.stop();
-                    this.sound.play('gameover');
-                    this.scene.start('GameOverScene', { score: this.score });
-                }
+                if (this.timerEvent) this.timerEvent.remove();
+                
+                // ★ここを handleDamage の呼び出しに置き換える
+                this.handleDamage();
             }
         },
         loop: true
     });
 }
-
 
         formatTimer(time) {
         // 1. 小数点1桁までにする (5.0)
@@ -439,7 +682,7 @@ create() {
     }
 
         cleanupQuestions() {
-        if (this.levelText) this.levelText.destroy();
+     // if (this.levelText) this.levelText.destroy();
         if (this.bubble) this.bubble.destroy();
         if (this.questionText) this.questionText.destroy();
         if (this.optionButtons) {
@@ -451,35 +694,54 @@ create() {
 
     generateQuestion() {
         this.cleanupQuestions();
-        // 1. レベル計算と敵の入れ替え
-        let correctCount = this.score / 100;
-        let level = Math.min(Math.floor(correctCount / 2) + 1, 5);
-        if (this.currentLevel !== level) {
-            this.enemies.clear(true, true);
-            this.currentLevel = level;
-        }
+
+        let level = Math.min(Math.floor(this.correctAnswerCount / 20) + 1, 5);
+        this.currentLevel = level; // 現在のレベルを更新
+        this.updateLevelDisplay();
+
         let enemy = this.enemies.getFirstAlive();
         if (!enemy) {
             let shadow = this.add.ellipse(450, 330, 60, 15, 0x000000, 0.4);
-            enemy = this.add.sprite(450, 290, 'teki1').setScale(0.1);
+            let enemyKey;
+            // 例：5%の確率で kanepg、残りの95%は通常の teki1()
+            if (Phaser.Math.Between(0, 99) < 90) {
+                enemyKey = 'kanepg';
+            } else {
+                enemyKey = this.teki1();
+            }
+            enemy = this.add.sprite(450, 280, enemyKey);
+
+            if (enemyKey === 'kanepg') {
+                // kanepg の場合（例：普通の敵の2倍の大きさにしたいなら 0.2）
+                // 画像が元々大きいなら、0.05 とか小さくする調整になるかも。
+                enemy.setScale(0.35); 
+            } else {
+                // 通常の敵の場合（今まで通り 0.1）
+                enemy.setScale(0.1);
+            }
+
             enemy.shadow = shadow;
             this.enemies.add(enemy);
             enemy.hp = 2;
             enemy.hpPanel = this.drawEnemyHP(enemy.x, enemy.y);
         }
-        // 2. 数式作成
-        let n1, n2, answer, operatorText;
-        if (this.currentStage === 'subtraction') {
-            n1 = Math.floor(Math.random() * 10) + 5;
-            n2 = Math.floor(Math.random() * n1) + 1;
-            answer = n1 - n2;
-            operatorText = `${n1} - ${n2}`;
-        } else {
-            n1 = Math.floor(Math.random() * 10) + 1;
-            n2 = Math.floor(Math.random() * 10) + 1;
-            answer = n1 + n2;
-            operatorText = `${n1} + ${n2}`;
+
+// 選択されたステージとレベルを組み合わせる（変数名を this.currentStage に合わせる）
+        let stageType = this.currentStage || 'addition'; 
+        let csvKey = `${stageType}_lv${level}`; 
+        let fileContent = this.cache.text.get(csvKey);
+
+        if (!fileContent) {
+            console.error('CSVファイルが見つかりません: ' + csvKey);
+            return;
         }
+
+        let lines = fileContent.trim().split('\n');
+        let rows = lines.slice(1).map(line => line.split(','));
+        let randomRow = rows[Math.floor(Math.random() * rows.length)];
+        
+        let operatorText = randomRow[2].trim(); 
+        let answer = parseInt(randomRow[3], 10);
 
         // 3. UI描画
         this.questionContainer = this.add.graphics();
@@ -487,25 +749,26 @@ create() {
         this.questionContainer.lineStyle(4, 0xd4af37, 1);
         this.questionContainer.fillRoundedRect(20, 395, 360, 195, 10);
         this.questionContainer.strokeRoundedRect(20, 395, 360, 195, 10);
-        this.questionText = this.add.text(200, 430, `${operatorText} = ?`, {
+        this.questionText = this.add.text(200, 430, operatorText, {
             fontSize: '40px',
             fontFamily: '"Kanit"',
             color: '#ffffff',
-            fontStyle: 'bold' ,
+            fontStyle: 'bold',
         }).setOrigin(0.5);
 
         // 4. 選択肢ボタン生成
-        let options = [answer, answer + 5, answer - 2, answer + 10].sort(() => Math.random() - 0.5);
+       let options = [answer, answer + 5, answer - 2, answer + 10].sort(() => Math.random() - 0.5);
         options.forEach((opt, index) => {
             let row = Math.floor(index / 2);
             let col = index % 2;
             let x = 115 + (col * 170);
             let y = 495 + (row * 60);
-            // 背景と文字を作成
+            
             let btnBg = this.add.graphics();
             btnBg.fillStyle(0x2d3463, 1);
             btnBg.fillRoundedRect(x - 80, y - 25, 160, 50, 8);
             this.optionButtons.push(btnBg);
+            
             let btnText = this.add.text(x, y, opt.toString(), {
                 fontSize: '28px',
                 color: '#ffffff',
@@ -515,94 +778,362 @@ create() {
             btnText.input.hitArea.setTo(-80, -25, 160, 50);
             
             btnText.on('pointerdown', () => {
-            if (opt === answer) {
-            this.sound.play('panti', { volume: 0.3 });
-            this.score += 100;
+                // タイマーを止める
+                if (this.timerEvent) this.timerEvent.remove();
 
-            // 1. HPの処理とスコア更新を先にまとめる
-            let currentEnemy = this.enemies.getFirstAlive();
-            if (currentEnemy) {
-                currentEnemy.hp--;
-        this.tweens.add({ 
-            targets: currentEnemy, 
-            alpha: 0, 
-            duration: 100, 
-            yoyo: true, 
-            repeat: 1 
-        });
-
-            if (currentEnemy.hp === 1) {
-                currentEnemy.hpPanel.h2.setFill('#000000').setStroke('#000000', 3);
-            } else if (currentEnemy.hp <= 0) {
-                // 1. パネルのパーツを先に削除
-                currentEnemy.hpPanel.graphics.destroy();
-                currentEnemy.hpPanel.hpLabel.destroy();
-                currentEnemy.hpPanel.h1.destroy();
-                currentEnemy.hpPanel.h2.destroy();
-                
-                // 2. 敵を消すアニメーションを先に実行
-                this.tweens.add({
-                    targets: [currentEnemy, currentEnemy.shadow], // ★敵と影の両方を指定
-                    alpha: 0,
-                    duration: 300,
-                    onComplete: () => {
-                        currentEnemy.shadow.destroy(); // ★影を消す
-                        currentEnemy.destroy();
+                if (opt === answer) {
+                    this.sound.play('panti', { volume: 0.3 });
+                    
+                    // --- コンボとスコア倍率の処理 ---
+                    this.comboCount++;
+                    
+                    if (this.comboCount > this.maxCombo) {
+                        this.maxCombo = this.comboCount;
                     }
-                });
-                // ここにあった currentEnemy.destroy(); は削除しました！
-            }
-        }
+                    
 
-        let s = String(this.score).padStart(3, '０');
-        this.scoreText.setText('スコア\n' + s);
+                    let multiplier = 1.0 + Math.floor(this.comboCount / 10) * 0.1;
+                    if (multiplier > 1.5) multiplier = 1.5;
+                    
+                    this.score += Math.floor(100 * multiplier);
+                    this.showCombo();
 
-        if (this.score > this.highScore) {
-            this.highScore = this.score;
-            localStorage.setItem('highScore', this.highScore);
-            this.highScoreText.setText('ハイスコア\n' + String(this.highScore).padStart(3, '０'));
-        }
+                    this.correctAnswerCount++;
 
-        // 2. アニメーション処理（currentEnemyは上ですでに取得済みなので再取得不要）
-        this.james.setScale(0.20);
-        this.james.y = this.james.originalY + 10;
-        this.james.play('attack_anim');
+                    let currentEnemy = this.enemies.getFirstAlive();
+                    if (currentEnemy) {
+                        currentEnemy.hp--;
+                        this.tweens.add({ 
+                            targets: currentEnemy, 
+                            alpha: 0, 
+                            duration: 100, 
+                            yoyo: true, 
+                            repeat: 1 
+                        });
 
-        this.james.once('animationcomplete', () => {
-            this.james.setScale(0.15);
-            this.james.x = this.james.originalX;
-            this.james.y = this.james.originalY;
-            this.james.play('walk_anim');
-        });
+                        if (currentEnemy.hp === 1) {
+                            currentEnemy.hpPanel.h2.setFill('#000000').setStroke('#000000', 3);
+                        } else if (currentEnemy.hp <= 0) {
+                            currentEnemy.hpPanel.graphics.destroy();
+                            currentEnemy.hpPanel.hpLabel.destroy();
+                            currentEnemy.hpPanel.h1.destroy();
+                            currentEnemy.hpPanel.h2.destroy();
 
-        // 3. 次の問題へ
-        this.time.delayedCall(500, () => {
-            this.startTimer();
-            this.generateQuestion();
-        });
-                } else {
-                    this.wrongCount++;
-                    this.sound.play('damage');
-                    if (this.wrongCount === 1) {
-                        this.heart2.setFill('#000000');
-                        this.heart2.setStroke('#000000', 3);
+                            if (currentEnemy.texture.key === 'kanepg') {
+                            let kaneX = currentEnemy.x;
+                            let kaneY = currentEnemy.y;
+
+                            // ジェム（kane）を生成する（※サイズはジェムの画像に合わせて調整してね、例えば 0.2 など）
+                            let jewel = this.add.sprite(kaneX, kaneY, 'kane').setScale(0.1);
+
+                            // フワッと上に飛び出して消えるアニメーション
+                            this.tweens.add({
+                                targets: jewel,
+                                y: kaneY - 80,      // 上に60px移動
+                                duration: 400,      // 0.4秒かけて素早く移動
+                                ease: 'Power1',
+                                onComplete: () => {
+                                    this.sound.play('kane', {volume: 0.5});
+                                    // 2. 上で止まった状態で、2秒（2000ミリ秒）待ってから消す
+                                    this.time.delayedCall(1000, () => {
+                                        jewel.destroy();
+
+                                        // 3. ジェムの所持数を増やす処理
+                                        // ジェムを増やす関数
+                                        this.gemCount++;
+                                        localStorage.setItem('player_gems', this.gemCount);
+    
+                                         // 画面のテキストを更新する！
+                                        this.gemText.setText('💎' + this.gemCount);
+                                        }                                   
+                                     )}
+                                });
+                            }
+
+                            
+                            this.tweens.add({
+                                targets: [currentEnemy, currentEnemy.shadow],
+                                alpha: 0,
+                                duration: 300,
+                                onComplete: () => {
+                                    currentEnemy.shadow.destroy();
+                                    currentEnemy.destroy();
+                                }
+                            });
+                        }
+                    }
+
+                    let s = String(this.score).padStart(3, '０');
+                    this.scoreText.setText('スコア\n' + s);
+
+                    if (currentEnemy && currentEnemy.hp <= 0) {
+                        this.killCount++;
+                        let k = String(this.killCount).replace(/[0-9]/g, function(s) {
+                            return String.fromCharCode(s.charCodeAt(0) + 0xFEE0);
+                        });
+                        this.killCountText.setText('討伐数\n' + k + '体');
+                    }
+
+                    if (this.score > this.highScore) {
+                        this.highScore = this.score;
+                        localStorage.setItem('highScore', this.highScore);
+                        this.highScoreText.setText('ハイスコア\n' + String(this.highScore).padStart(3, '０'));
+                    }
+
+                    this.james.setScale(0.20);
+                    this.james.y = this.james.originalY + 10;
+                    this.james.play('attack_anim');
+
+                    this.james.once('animationcomplete', () => {
+                        this.james.setScale(0.15);
+                        this.james.x = this.james.originalX;
+                        this.james.y = this.james.originalY;
+                        this.james.play('walk_anim');
+                    });
+
+                    this.time.delayedCall(500, () => {
+                        this.startTimer();
                         this.generateQuestion();
-                    } else {
-                        this.heart1.setFill('#000000');
-                        this.heart1.setStroke('#000000', 3);
-                        this.bgm.stop();
-                        this.sound.play('gameover');
-                        this.scene.start('GameOverScene', { score: this.score });
-                    }
+                    });
+
+                } else {
+                    // --- 不正解のとき：共通のダメージ処理を呼び出す ---
+                    this.comboCount = 0;
+                    this.hideCombo();
+                    this.handleDamage();
                 }
             });
             this.optionButtons.push(btnText);
         });
     }
+
+    updateLevelDisplay() {
+    if (!this.levelText) return;
+
+    let levelName = 'NORMAL';
+    let levelColor = '#ffffff'; // レベル1：白
+
+    if (this.currentLevel === 2) {
+        levelName = 'HARD';
+        levelColor = '#00ff00'; // レベル2：緑色
+    } else if (this.currentLevel === 3) {
+        levelName = 'EXPERT';
+        levelColor = '#00ffff'; // レベル3：青色
+    } else if (this.currentLevel === 4) {
+        levelName = 'MASTER';
+        levelColor = '#bf00ff'; // レベル4：紫色
+    } else if (this.currentLevel === 5) {
+        levelName = 'LEGEND';
+        levelColor = '#ff0000'; // レベル5：赤色
+    }
+
+    this.levelText.setText(levelName);
+    this.levelText.setColor(levelColor);
 }
 
-    // --- ゲームオーバーシーン ---
-    class GameOverScene extends Phaser.Scene {
+        handleDamage() {
+            this.comboCount = 0;
+            this.hideCombo();
+
+            this.wrongCount++;
+            this.sound.play('damage');
+
+        // 現在生きている敵を取得する
+            let enemy = this.enemies.getFirstAlive();
+
+            if (this.wrongCount === 1) {
+            // --- 1回目のダメージ ---
+            this.heart2.setFill('#000000').setStroke('#000000', 3);
+
+            this.james.setTexture('damagepg');
+            this.james.setScale(0.15); // ★ 1回目のダメージ時も 0.15 に固定
+
+            if (enemy) {
+                this.tweens.add({
+                    targets: enemy,
+                    x: enemy.x - 60,
+                    duration: 100,
+                    yoyo: true,
+                    repeat: 0
+                });
+            }
+
+            this.tweens.add({
+                targets: this.james,
+                x: this.james.originalX - 15,
+                duration: 80,
+                yoyo: true,
+                repeat: 2
+            });
+
+            this.time.delayedCall(800, () => {
+                this.james.setTexture('penguin1');
+                this.james.setScale(0.15); 
+                this.james.x = this.james.originalX;
+                this.james.play('walk_anim');
+            });
+
+            this.startTimer();
+            this.generateQuestion();
+
+        } else {
+            // --- 2回目のダメージ（ゲームオーバー） ---
+            this.heart1.setFill('#000000').setStroke('#000000', 3);
+            this.bgm.stop();
+            this.sound.play('gameover');
+
+            if (this.timerEvent) this.timerEvent.remove();
+            if (this.cleanupQuestions) {
+                this.cleanupQuestions();
+            }
+
+            this.james.stop();
+            this.james.setTexture('damagepg');
+            this.james.setScale(0.15); // ★ 2回目のダメージ（揺れる前）も 0.15 に固定
+
+            if (enemy) {
+                this.tweens.add({
+                    targets: enemy,
+                    x: enemy.x - 60,
+                    duration: 100,
+                    yoyo: true,
+                    repeat: 0
+                });
+            }
+
+            this.tweens.add({
+                targets: this.james,
+                x: this.james.originalX - 15,
+                duration: 100,
+                yoyo: true,
+                repeat: 2,
+                onComplete: () => {
+                    // 倒れた画像に変更し、サイズを 0.15 に固定
+                    this.james.setTexture('gameoverpg');
+                    this.james.setScale(0.15); 
+                    this.james.x = this.james.originalX;
+                    this.james.y = this.james.originalY;
+
+                    // ★ーーー ここからランキング記録の保存処理を追加 ーーー★
+                    let stage = this.currentStage; // 'addition' などのステージ名
+                    
+                    // プレイヤー情報の取得（登録されていない場合の保険として '0000' や '名無し' を用意）
+                    let playerId = localStorage.getItem('player_id') || '0000';
+                    let playerName = localStorage.getItem('player_name') || '名無し';
+
+                    // 1. スコアの保存チェック
+                    let oldScoreData = JSON.parse(localStorage.getItem(`${stage}_rank_score_data`)) || { value: 0 };
+                    if (this.score > (oldScoreData.value || 0)) {
+                        let newScoreData = { value: this.score, id: playerId, name: playerName };
+                        localStorage.setItem(`${stage}_rank_score_data`, JSON.stringify(newScoreData));
+                    }
+
+                    // 2. コンボの保存チェック
+                    let oldComboData = JSON.parse(localStorage.getItem(`${stage}_rank_combo_data`)) || { value: 0 };
+                    if (this.maxCombo > (oldComboData.value || 0)) {
+                        let newComboData = { value: this.maxCombo, id: playerId, name: playerName };
+                        localStorage.setItem(`${stage}_rank_combo_data`, JSON.stringify(newComboData));
+                    }
+
+                    // 3. 討伐数の保存チェック
+                    let oldKillData = JSON.parse(localStorage.getItem(`${stage}_rank_kill_data`)) || { value: 0 };
+                    if (this.killCount > (oldKillData.value || 0)) {
+                        let newKillData = { value: this.killCount, id: playerId, name: playerName };
+                        localStorage.setItem(`${stage}_rank_kill_data`, JSON.stringify(newKillData));
+                    }
+                    // ★ーーーーーーーーーーーーーーーーーーーーーーーーーーーー★
+
+                    this.time.delayedCall(1500, () => {
+                        this.scene.start('GameOverScene', { score: this.score });
+                    });
+                }
+            });
+        }
+    }
+
+    // --- ★ 新規追加メソッド ---
+    showCombo() {
+        // 2コンボ未満は表示しない
+        if (this.comboCount < 2) return;
+
+        let color = '#ffffff';
+        let fontSize = '18px';
+
+        // 10コンボごとに色とフォントサイズを変更
+        if (this.comboCount >= 50) {
+            fontSize = '45px';
+            color = '#ffffff'; // 虹色は下のTint(色合い)処理で作るためベースは白
+        } else if (this.comboCount >= 40) {
+            color = '#ffa500'; // オレンジ
+            fontSize = '35px';
+        } else if (this.comboCount >= 30) {
+            color = '#ba55d3'; // 紫
+            fontSize = '30px';
+        } else if (this.comboCount >= 20) {
+            color = '#1e90ff'; // 青
+            fontSize = '26px';
+        } else if (this.comboCount >= 10) {
+            color = '#32cd32'; // 緑
+            fontSize = '22px';
+        }
+
+        // テキストとスタイルの適用
+        this.comboText.setText(this.comboCount + ' COMBO');
+        this.comboText.setStyle({ color: color, fontSize: fontSize });
+        
+        // 画面に表示
+        //this.comboBg.setAlpha(1);
+        this.comboText.setAlpha(1);
+
+        // --- 50コンボ以上の「虹色」アニメーション ---
+        if (this.comboCount >= 50) {
+            if (!this.rainbowTween) {
+                // 色相(HSV)をぐるぐる回して虹色を表現
+                this.rainbowTween = this.tweens.addCounter({
+                    from: 0,
+                    to: 100,
+                    duration: 2000, // 2秒で1周
+                    loop: -1,       // 無限ループ
+                    onUpdate: (tween) => {
+                        let h = tween.getValue() / 100;
+                        let rgb = Phaser.Display.Color.HSVToRGB(h, 1, 1);
+                        this.comboText.setTint(rgb.color);
+                    }
+                });
+            }
+        } else {
+            // 50未満の場合は虹色を解除
+            this.comboText.clearTint();
+            if (this.rainbowTween) {
+                this.rainbowTween.stop();
+                this.rainbowTween = null;
+            }
+        }
+
+        // 毎回文字が弾ける(ポップする)アニメーション
+        this.tweens.add({
+            targets: this.comboText,
+            scaleX: { from: 1.5, to: 1 },
+            scaleY: { from: 1.5, to: 1 },
+            duration: 300,
+            ease: 'Back.easeOut'
+        });
+    }
+
+    hideCombo() {
+        // コンボが途切れた時に隠す処理
+        //if (this.comboBg) this.comboBg.setAlpha(0);
+        if (this.comboText) this.comboText.setAlpha(0);
+        if (this.comboText) this.comboText.clearTint();
+        if (this.rainbowTween) {
+            this.rainbowTween.stop();
+            this.rainbowTween = null;
+        }
+    }
+}
+
+// --- ゲームオーバーシーン ---
+class GameOverScene extends Phaser.Scene {
         constructor() { super('GameOverScene'); }
         init(data) { this.score = data.score; }
         create() {
@@ -613,28 +1144,673 @@ create() {
         }
     }
 
+// --- プレイヤー登録シーン ---
+class ProfileScene extends Phaser.Scene {
+    constructor() { super('ProfileScene'); }
 
+    preload() {
+        this.load.image('title_back', 'title_back.png');
+    }
+
+    create() {
+        // 背景
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+
+        // 半透明のパネル
+        let panel = this.add.graphics();
+        panel.fillStyle(0x1a1a2e, 0.85);
+        panel.lineStyle(3, 0xd4af37, 1);
+        panel.fillRoundedRect(30, 50, 340, 500, 10);
+        panel.strokeRoundedRect(30, 50, 340, 500, 10);
+
+        // タイトル
+        this.add.text(200, 90, 'プレイヤー登録', {
+            fontSize: '28px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#e2c673',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5);
+
+        // 保存されている現在のデータを取得（なければ空）
+        let savedGrade = localStorage.getItem('player_grade') || '';
+        let savedClass = localStorage.getItem('player_class') || '';
+        let savedNumber = localStorage.getItem('player_number') || '';
+        let savedName = localStorage.getItem('player_name') || '';
+
+        // 入力フォームのラベルとHTML入力欄の作成
+        let startY = 145;
+        let spacing = 75;
+
+        // 1. 学年
+        this.add.text(60, startY, '学年 (例: 2)', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold' });
+        let gradeInput = this.createInputField(60, startY + 25, 280, 35, savedGrade, '数字を入力');
+
+        // 2. クラス
+        this.add.text(60, startY + spacing, 'クラス (例: 2)', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold' });
+        let classInput = this.createInputField(60, startY + spacing + 25, 280, 35, savedClass, '数字を入力');
+
+        // 3. 番号
+        this.add.text(60, startY + spacing * 2, '番号 (例: 5 または 22)', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold' });
+        let numberInput = this.createInputField(60, startY + spacing * 2 + 25, 280, 35, savedNumber, '数字を入力');
+
+        // 4. 名前
+        this.add.text(60, startY + spacing * 3, '名前 (例: 佐藤太郎)', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold' });
+        let nameInput = this.createInputField(60, startY + spacing * 3 + 25, 280, 35, savedName, '名前を入力');
+
+
+        // --- 「保存して戻る」ボタン ---
+        let saveBtnBg = this.add.graphics();
+        saveBtnBg.fillStyle(0xd4af37, 1);
+        saveBtnBg.fillRoundedRect(100, 490, 200, 45, 8);
+
+        let saveText = this.add.text(200, 512, '保存する', {
+            fontSize: '20px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#1a1a2e'
+        }).setOrigin(0.5).setInteractive();
+
+        saveText.on('pointerdown', () => {
+            // 入力された値を取得して保存
+            let grade = gradeInput.value.trim();
+            let cls = classInput.value.trim();
+            let num = numberInput.value.trim();
+            let name = nameInput.value.trim();
+
+            if (!grade || !cls || !num || !name) {
+                alert('すべての項目を入力してください！');
+                return;
+            }
+
+            // 番号を自動で2桁に整える処理（例: 5番なら "05"、22番なら "22" にする）
+            let formattedNum = num.padStart(2, '0');
+
+            // 学年 + クラス + 整えた番号で「2022」や「2222」のIDを作る
+            let playerId = `${grade}${cls}${formattedNum}`;
+
+            // ローカルストレージに保存
+            localStorage.setItem('player_grade', grade);
+            localStorage.setItem('player_class', cls);
+            localStorage.setItem('player_number', num);
+            localStorage.setItem('player_name', name);
+            localStorage.setItem('player_id', playerId); // 結合したIDも保存しておく
+
+            // 入力用HTML要素を画面から削除してからメニューへ戻る
+            this.removeInputs([gradeInput, classInput, numberInput, nameInput]);
+            this.scene.start('MenuScene');
+        });
+
+        // シーンが終了するときにHTML要素が残らないようにする安全策
+        this.events.once('shutdown', () => {
+            this.removeInputs([gradeInput, classInput, numberInput, nameInput]);
+        });
+    }
+
+    // HTMLの input 要素をPhaser上に配置する便利関数
+    createInputField(x, y, width, height, value, placeholder) {
+        let input = document.createElement('input');
+        input.type = 'text';
+        input.value = value;
+        input.placeholder = placeholder;
+        input.style.position = 'absolute';
+        
+        // Phaserのcanvasの位置に合わせて位置を自動調整させるためのスタイル
+        let canvas = document.querySelector('canvas');
+        let rect = canvas.getBoundingClientRect();
+        
+        // 画面比率を考慮して配置
+        input.style.left = `${rect.left + (x / 400) * rect.width}px`;
+        input.style.top = `${rect.top + (y / 600) * rect.height}px`;
+        input.style.width = `${(width / 400) * rect.width}px`;
+        input.style.height = `${(height / 600) * rect.height}px`;
+        input.style.fontSize = '16px';
+        input.style.padding = '4px 8px';
+        input.style.border = '2px solid #d4af37';
+        input.style.borderRadius = '4px';
+        input.style.backgroundColor = '#ffffff';
+        input.style.zIndex = '1000';
+
+        document.body.appendChild(input);
+        return input;
+    }
+
+    // 作成したHTML要素を消去する関数
+    removeInputs(inputs) {
+        inputs.forEach(input => {
+            if (input && input.parentNode) {
+                input.parentNode.removeChild(input);
+            }
+        });
+    }
+}
+
+    // --- ランキングシーン ---
 class RankingScene extends Phaser.Scene {
     constructor() { super('RankingScene'); }
-    create() { this.add.text(100, 100, '準備中...'); }
+
+    preload() {
+        this.load.image('title_back', 'title_back.png');
+    }
+
+    create() {
+        // 背景
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+
+        // 半透明のパネル
+        let panel = this.add.graphics();
+        panel.fillStyle(0x1a1a2e, 0.85);
+        panel.lineStyle(3, 0xd4af37, 1);
+        panel.fillRoundedRect(30, 80, 340, 440, 10);
+        panel.strokeRoundedRect(30, 80, 340, 440, 10);
+
+        // タイトル
+        this.add.text(200, 120, 'ランキング', {
+            fontSize: '32px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#e2c673',
+            stroke: '#000000',
+            strokeThickness: 5
+        }).setOrigin(0.5);
+
+        // --- ステージ管理用のデータ ---
+        // システム用のキーと、画面に表示する日本語名のセット
+        this.stages = [
+            { key: 'addition',    name: 'たし算' },
+            { key: 'subtraction', name: 'ひき算' },
+            { key: 'multiplication', name: 'かけ算' },
+            { key: 'division',    name: 'わり算' }
+        ];
+        this.currentStageIndex = 0; // 最初は「たし算 (0番目)」からスタート
+
+        // --- スコア・コンボ・討伐数のテキスト表示位置 ---
+        let startY = 205;
+        let spacing = 75;
+
+        // 1. スコア
+        this.add.text(60, startY, '🏆 最高スコア', { fontSize: '18px', fontFamily: '"Kanit"', color: '#ffffff', fontStyle: 'bold' });
+        this.scoreValText = this.add.text(340, startY, '000', { fontSize: '22px', fontFamily: '"Kanit"', color: '#e2c673', fontStyle: 'bold' }).setOrigin(1, 0);
+        this.scorePlayerText = this.add.text(340, startY + 24, '----  ---------', { fontSize: '14px', fontFamily: '"Kanit"', color: '#a0a0a0' }).setOrigin(1, 0);
+
+        // 2. コンボ
+        this.add.text(60, startY + spacing, '🔥 最高コンボ', { fontSize: '18px', fontFamily: '"Kanit"', color: '#ffffff', fontStyle: 'bold' });
+        this.comboValText = this.add.text(340, startY + spacing, '0 COMBO', { fontSize: '22px', fontFamily: '"Kanit"', color: '#32cd32', fontStyle: 'bold' }).setOrigin(1, 0);
+        this.comboPlayerText = this.add.text(340, startY + spacing + 24, '----  ---------', { fontSize: '14px', fontFamily: '"Kanit"', color: '#a0a0a0' }).setOrigin(1, 0);
+
+        // 3. 討伐数
+        this.add.text(60, startY + spacing * 2, '⚔️ 最高討伐数', { fontSize: '18px', fontFamily: '"Kanit"', color: '#ffffff', fontStyle: 'bold' });
+        this.killValText = this.add.text(340, startY + spacing * 2, '０体', { fontSize: '22px', fontFamily: '"Kanit"', color: '#ff6b6b', fontStyle: 'bold' }).setOrigin(1, 0);
+        this.killPlayerText = this.add.text(340, startY + spacing * 2 + 24, '----  ---------', { fontSize: '14px', fontFamily: '"Kanit"', color: '#a0a0a0' }).setOrigin(1, 0);
+
+        // --- ステージ切り替え用のUI（← ステージ名 →） ---
+        let selectorY = 165;
+
+        // 左矢印
+        let leftArrow = this.add.text(110, selectorY, '◀', { fontSize: '22px', color: '#d4af37' }).setOrigin(0.5).setInteractive();
+        // ステージ名表示
+        this.stageTitleText = this.add.text(200, selectorY, '', { fontSize: '22px', fontFamily: '"Kanit"', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5);
+        // 右矢印
+        let rightArrow = this.add.text(290, selectorY, '▶', { fontSize: '22px', color: '#d4af37' }).setOrigin(0.5).setInteractive();
+
+        // 矢印を押したときの処理
+        leftArrow.on('pointerdown', () => {
+            this.currentStageIndex--;
+            if (this.currentStageIndex < 0) {
+                this.currentStageIndex = this.stages.length - 1; // 最初から左を押したら一番最後にループ
+            }
+            this.updateRankingDisplay();
+        });
+
+        rightArrow.on('pointerdown', () => {
+            this.currentStageIndex++;
+            if (this.currentStageIndex >= this.stages.length) {
+                this.currentStageIndex = 0; // 最後から右を押したら一番最初にループ
+            }
+            this.updateRankingDisplay();
+        });
+
+        // 最初の一回目を反映
+        this.updateRankingDisplay();
+
+
+        // --- 「戻る」ボタン ---
+        let backBtnBg = this.add.graphics();
+        backBtnBg.fillStyle(0x2d3463, 1);
+        backBtnBg.lineStyle(2, 0xd4af37, 1);
+        backBtnBg.fillRoundedRect(120, 440, 160, 45, 8);
+        backBtnBg.strokeRoundedRect(120, 440, 160, 45, 8);
+
+        let backText = this.add.text(200, 462, 'もどる', {
+            fontSize: '22px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#ffffff'
+        }).setOrigin(0.5).setInteractive();
+
+        backText.on('pointerdown', () => {
+            this.scene.start('MenuScene'); 
+        });
+    }
+
+    // --- 選択されているステージに合わせて数値を書き換える関数 ---
+    updateRankingDisplay() {
+        let currentStageObj = this.stages[this.currentStageIndex];
+        let stageKey = currentStageObj.key;
+
+        // ステージ名の更新（「- たし算 -」の形に）
+        this.stageTitleText.setText(`- ${currentStageObj.name} -`);
+
+        // --- 保存されたスコアとプレイヤー情報を取得（_data形式に対応） ---
+        let scoreData = JSON.parse(localStorage.getItem(`${stageKey}_rank_score_data`)) || { value: 0, id: '----', name: '--------' };
+        let comboData = JSON.parse(localStorage.getItem(`${stageKey}_rank_combo_data`)) || { value: 0, id: '----', name: '--------' };
+        let killData  = JSON.parse(localStorage.getItem(`${stageKey}_rank_kill_data`))  || { value: 0, id: '----', name: '--------' };
+
+        // 1. スコア反映
+        this.scoreValText.setText(String(scoreData.value).padStart(3, '０'));
+        this.scorePlayerText.setText(`${scoreData.id}  ${scoreData.name}`);
+
+        // 2. コンボ反映
+        this.comboValText.setText(comboData.value + ' COMBO');
+        this.comboPlayerText.setText(`${comboData.id}  ${comboData.name}`);
+
+        // 3. 討伐数反映
+        let k = String(killData.value).replace(/[0-9]/g, function(s) {
+            return String.fromCharCode(s.charCodeAt(0) + 0xFEE0);
+        });
+        this.killValText.setText(k + '体');
+        this.killPlayerText.setText(`${killData.id}  ${killData.name}`);
+    }
 }
 
-// --- 追加：まだ作っていないシーンの定義 ---
+// --- ジェムショップシーン ---
 class ShopScene extends Phaser.Scene {
-    constructor() { super('ShopScene'); }
-    create() { this.add.text(200, 300, 'ショップ（準備中）', { color: '#000' }).setOrigin(0.5); }
+    constructor() { 
+        super('ShopScene'); 
+    }
+
+    preload() {
+        this.load.image('title_back', 'title_back.png');
+        this.load.image('kane', 'kane.png'); // ジェムの画像を読み込む
+    }
+
+    create() {
+        // 1. 背景と外枠パネル（ランキング画面とお揃い）
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+
+        let panel = this.add.graphics();
+        panel.fillStyle(0x1a1a2e, 0.85);
+        panel.lineStyle(3, 0xd4af37, 1);
+        panel.fillRoundedRect(30, 60, 340, 480, 10);
+        panel.strokeRoundedRect(30, 60, 340, 480, 10);
+
+        // 2. タイトル
+        this.add.text(200, 95, 'ショップ', {
+            fontSize: '28px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#e2c673',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5);
+
+        // 3. 所持ジェムの表示（ご指定の「💎 1」などの表記に合わせてバッチリ反映）
+        let currentGems = localStorage.getItem('player_gems') ? parseInt(localStorage.getItem('player_gems')) : 0;
+        this.shopGemText = this.add.text(330, 140, '💎 ' + currentGems, { 
+            fontSize: '22px', 
+            fontFamily: '"Kanit"', 
+            color: '#ffff00', 
+            fontStyle: 'bold' 
+        }).setOrigin(0.5);
+
+        // --- 4. スクロールする商品エリアの作成 ---
+        
+        // スクロールさせる範囲（表示ウィンドウ）の座標とサイズ
+        const listX = 50;
+        const listY = 160;
+        const listWidth = 300;
+        const listHeight = 290;
+
+        // はみ出た部分を隠すためのマスク（枠の外に出た文字やボタンが見えなくなる）
+        let shape = this.make.graphics();
+        shape.fillRect(listX, listY, listWidth, listHeight);
+        let zoneMask = shape.createGeometryMask();
+
+        // 商品をまとめるコンテナ（この中に入れたものが一緒に動く）
+        let container = this.add.container(0, 0);
+        container.setMask(zoneMask);
+
+        // 商品データ（増やしていけるよ！）
+        const shopItems = [
+            { id: 'bamboo_sword', name: '⚔️ バンブーソード', price: 10 },
+            { id: 'glasses', name: '👚 愛がある眼鏡', price: 10 },
+            { id: 'hair', name: '👚 もりもりヘアー', price: 15 },
+            { id: 'cd_1', name: '💿 CD（考え中）', price: 5 }
+        ];
+
+        let itemSpacing = 75;
+        shopItems.forEach((item, index) => {
+            let y = listY + 15 + (index * itemSpacing);
+
+            // 商品ごとの背景カード
+            let itemBg = this.add.graphics();
+            itemBg.fillStyle(0x2d3463, 0.6);
+            itemBg.lineStyle(1, 0xd4af37, 0.5);
+            itemBg.fillRoundedRect(listX, y, listWidth, 65, 8);
+            itemBg.strokeRoundedRect(listX, y, listWidth, 65, 8);
+            container.add(itemBg);
+
+            // 商品名
+            let nameText = this.add.text(listX + 15, y + 20, item.name, {
+                fontSize: '16px',
+                fontFamily: '"Kanit"',
+                color: '#ffffff',
+                fontStyle: 'bold'
+            });
+            container.add(nameText);
+
+            // 値段（💎 10 など）
+            let priceText = this.add.text(listX + 180, y + 22, '💎 ' + item.price, {
+                fontSize: '16px',
+                fontFamily: '"Kanit"',
+                color: '#ffff00',
+                fontStyle: 'bold'
+            });
+            container.add(priceText);
+
+            // 買うボタン
+            let buyBtn = this.add.text(listX + 260, y + 32, 'かう', {
+                fontSize: '14px',
+                fontFamily: '"Kanit"',
+                fontStyle: 'bold',
+                color: '#ffffff',
+                backgroundColor: '#e67e22',
+                padding: { x: 10, y: 4 }
+            }).setOrigin(0.5).setInteractive();
+            container.add(buyBtn);
+
+            buyBtn.on('pointerdown', () => {
+                let currentGems = localStorage.getItem('player_gems') ? parseInt(localStorage.getItem('player_gems')) : 0;
+                let inventory = JSON.parse(localStorage.getItem('player_inventory')) || [];
+
+                // すでに持っているかチェック
+                if (inventory.includes(item.id)) {
+                    // すでに持っている場合のメッセージなどを出してもOK
+                    return;
+                }
+
+                // --- ここから「購入しますか？」確認ポップアップの表示 ---
+
+                // 半透明の暗い背景（画面全体を覆って後ろを触れなくする）
+                let confirmOverlay = this.add.rectangle(200, 300, 400, 600, 0x000000, 0.6).setInteractive();
+
+                // 確認ウィンドウのパネル
+                let confirmBg = this.add.graphics();
+                confirmBg.fillStyle(0x1a1a2e, 1);
+                confirmBg.lineStyle(2, 0xd4af37, 1);
+                confirmBg.fillRoundedRect(60, 200, 280, 180, 10);
+                confirmBg.strokeRoundedRect(60, 200, 280, 180, 10);
+
+                // 確認テキスト
+                let confirmText = this.add.text(200, 245, item.name + '\nを 💎 ' + item.price + ' で\n購入しますか？', {
+                    fontSize: '18px',
+                    fontFamily: '"Kanit"',
+                    color: '#ffffff',
+                    align: 'center',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+
+                // 「はい」ボタン
+                let yesBtnBg = this.add.graphics();
+                yesBtnBg.fillStyle(0x27ae60, 1);
+                yesBtnBg.fillRoundedRect(90, 315, 100, 40, 6);
+                let yesText = this.add.text(140, 335, 'はい', {
+                    fontSize: '16px',
+                    fontFamily: '"Kanit"',
+                    fontStyle: 'bold',
+                    color: '#ffffff'
+                }).setOrigin(0.5).setInteractive();
+
+                // 「いいえ」ボタン
+                let noBtnBg = this.add.graphics();
+                noBtnBg.fillStyle(0xc0392b, 1);
+                noBtnBg.fillRoundedRect(210, 315, 100, 40, 6);
+                let noText = this.add.text(260, 335, 'いいえ', {
+                    fontSize: '16px',
+                    fontFamily: '"Kanit"',
+                    fontStyle: 'bold',
+                    color: '#ffffff'
+                }).setOrigin(0.5).setInteractive();
+
+                // まとめて消去するための配列
+                let popupElements = [confirmOverlay, confirmBg, confirmText, yesBtnBg, yesText, noBtnBg, noText];
+
+                // 「いいえ」または背景を押したらポップアップを閉じる
+                let closePopup = () => {
+                    popupElements.forEach(el => el.destroy());
+                };
+                confirmOverlay.on('pointerdown', closePopup);
+                noText.on('pointerdown', closePopup);
+
+                // 「はい」を押したときの購入処理
+                yesText.on('pointerdown', () => {
+                    if (currentGems >= item.price) {
+                        // ジェムを減らす
+                        currentGems -= item.price;
+                        localStorage.setItem('player_gems', currentGems);
+
+                        // 所持アイテムに追加
+                        inventory.push(item.id);
+                        localStorage.setItem('player_inventory', JSON.stringify(inventory));
+
+                        // 画面のジェム表示を更新
+                        this.shopGemText.setText('💎 ' + currentGems);
+
+                        console.log(item.name + ' を購入しました！');
+                    } else {
+                        console.log('ジェムが足りません！');
+                        // ジェムが足りないときのメッセージを出すのもおすすめ！
+                    }
+                    closePopup();
+                });
+            });
+        });
+
+        // --- 5. マウスホイールやスマホのドラッグでスクロールさせる仕組み ---
+        let totalContentHeight = shopItems.length * itemSpacing;
+        let maxScroll = Math.max(0, totalContentHeight - listHeight + 20);
+        let currentScrollY = 0;
+
+        // マウスホイールでのスクロール
+        this.input.on('wheel', (pointer, objects, dx, dy, dz) => {
+            // マウスポインタがショップのリスト上にあるときだけスクロールさせる
+            if (pointer.x >= listX && pointer.x <= listX + listWidth &&
+                pointer.y >= listY && pointer.y <= listY + listHeight) {
+                currentScrollY += dy * 0.5; // スクロールのスピード
+                currentScrollY = Phaser.Math.Clamp(currentScrollY, 0, maxScroll);
+                container.y = -currentScrollY;
+            }
+        });
+
+        // スマホなどのタッチ（ドラッグ）でのスクロール
+        let isDragging = false;
+        let startPointerY = 0;
+
+        this.input.on('pointerdown', (pointer) => {
+            if (pointer.x >= listX && pointer.x <= listX + listWidth &&
+                pointer.y >= listY && pointer.y <= listY + listHeight) {
+                isDragging = true;
+                startPointerY = pointer.y + currentScrollY;
+            }
+        });
+
+        this.input.on('pointermove', (pointer) => {
+            if (!isDragging) return;
+            currentScrollY = startPointerY - pointer.y;
+            currentScrollY = Phaser.Math.Clamp(currentScrollY, 0, maxScroll);
+            container.y = -currentScrollY;
+        });
+
+        this.input.on('pointerup', () => {
+            isDragging = false;
+        });
+
+
+        // 6. 「もどる」ボタン（スクロールエリアの外、一番下に固定）
+        let backBtnBg = this.add.graphics();
+        backBtnBg.fillStyle(0x2d3463, 1);
+        backBtnBg.lineStyle(2, 0xd4af37, 1);
+        backBtnBg.fillRoundedRect(120, 485, 160, 40, 8);
+        backBtnBg.strokeRoundedRect(120, 485, 160, 40, 8);
+
+        let backText = this.add.text(200, 505, 'もどる', {
+            fontSize: '20px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#ffffff'
+        }).setOrigin(0.5).setInteractive();
+
+        backText.on('pointerdown', () => {
+            this.scene.start('MenuScene'); // メニュー画面に戻る
+        });
+    }
 }
 
-class ItemScene extends Phaser.Scene {
-    constructor() { super('ItemScene'); }
-    create() { this.add.text(200, 300, 'アイテム一覧（準備中）', { color: '#000' }).setOrigin(0.5); }
+// --- 所持アイテムシーン ---
+class InventoryScene extends Phaser.Scene {
+    constructor() { 
+        super('InventoryScene'); 
+    }
+
+    create() {
+        // 背景と外枠パネル（ショップやランキングとお揃い！）
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+
+        let panel = this.add.graphics();
+        panel.fillStyle(0x1a1a2e, 0.85);
+        panel.lineStyle(3, 0xd4af37, 1);
+        panel.fillRoundedRect(30, 60, 340, 480, 10);
+        panel.strokeRoundedRect(30, 60, 340, 480, 10);
+
+        // タイトル
+        this.add.text(200, 95, '所持アイテム', {
+            fontSize: '28px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#e2c673',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5);
+
+        // --- 保存されている所持アイテムを読み込む ---
+        // 例: プレイヤーが持っているアイテムのリストを localStorage から取得する（なければ空っぽ）
+        let ownedItems = JSON.parse(localStorage.getItem('player_inventory')) || [];
+        
+        // --- 所持アイテム一覧を表示するエリア ---
+        const listX = 50;
+        const listY = 150;
+        const listWidth = 300;
+        const listHeight = 310;
+
+        if (ownedItems.length === 0) {
+            // まだ何も持っていないとき
+            this.add.text(200, 300, 'まだ何も持っていません\nショップで買い物をしよう！', {
+                fontSize: '16px',
+                fontFamily: '"Kanit"',
+                color: '#a0a0a0',
+                align: 'center'
+            }).setOrigin(0.5);
+        } else {
+            // 持っているアイテムがあるときの一覧表示（ここに並べていくよ）
+            ownedItems.forEach((itemId, index) => {
+                let y = listY + 10 + (index * 70);
+                
+                // アイテムのカード背景
+                let itemBg = this.add.graphics();
+                itemBg.fillStyle(0x2d3463, 0.6);
+                itemBg.lineStyle(1, 0xd4af37, 0.5);
+                itemBg.fillRoundedRect(listX, y, listWidth, 60, 8);
+                itemBg.strokeRoundedRect(listX, y, listWidth, 60, 8);
+
+                // アイテム名（IDに合わせて日本語に変換）
+                let itemName = this.getItemDisplayName(itemId);
+                this.add.text(listX + 15, y + 18, itemName, {
+                    fontSize: '16px',
+                    fontFamily: '"Kanit"',
+                    color: '#ffffff',
+                    fontStyle: 'bold'
+                });
+
+                // 「そうび」ボタン
+                let equipBtn = this.add.text(listX + 240, y + 30, 'そうび', {
+                    fontSize: '14px',
+                    fontFamily: '"Kanit"',
+                    fontStyle: 'bold',
+                    color: '#ffffff',
+                    backgroundColor: '#27ae60',
+                    padding: { x: 8, y: 4 }
+                }).setOrigin(0.5).setInteractive();
+
+                equipBtn.on('pointerdown', () => {
+                    // 装備したときの処理（ここで見た目や武器が変わるフラグを保存！）
+                    localStorage.setItem('equipped_item_' + this.getItemType(itemId), itemId);
+                    console.log(itemName + ' を装備しました！');
+                });
+            });
+        }
+
+        // 「もどる」ボタン
+        let backBtnBg = this.add.graphics();
+        backBtnBg.fillStyle(0x2d3463, 1);
+        backBtnBg.lineStyle(2, 0xd4af37, 1);
+        backBtnBg.fillRoundedRect(120, 485, 160, 40, 8);
+        backBtnBg.strokeRoundedRect(120, 485, 160, 40, 8);
+
+        let backText = this.add.text(200, 505, 'もどる', {
+            fontSize: '20px',
+            fontFamily: '"Kanit"',
+            fontStyle: 'bold',
+            color: '#ffffff'
+        }).setOrigin(0.5).setInteractive();
+
+        backText.on('pointerdown', () => {
+            this.scene.start('MenuScene'); // メニューに戻る
+        });
+    }
+
+    // アイテムのIDから日本語名に変換する便利関数
+    getItemDisplayName(id) {
+        if (id === 'bamboo_sword') return '⚔️ バンブーソード';
+        if (id === 'glasses') return '👚 愛がある眼鏡';
+        if (id === 'hair') return '👚 もりもりヘアー';
+        if (id === 'cd_1') return '💿 CD（考え中）';
+        return id;
+    }
+
+    // アイテムの種類（武器か装備かCDか）を判定する便利関数
+    getItemType(id) {
+        if (id === 'bamboo_sword') return 'weapon';
+        if (id === 'glasses' || id === 'hair') return 'armor';
+        if (id.startsWith('cd')) return 'cd';
+        return 'other';
+    }
 }
+
+// --- Phaserゲームの設定 ---
 const config = {
     type: Phaser.AUTO,
     width: 400,
     height: 600,
-    scene: [TitleScene, MenuScene, StageSelectScene, GameScene, GameOverScene, RankingScene, ShopScene, ItemScene] // ★追加
+    scene: [TitleScene, MenuScene, StageSelectScene, GameScene, GameOverScene, ProfileScene,RankingScene, ShopScene, InventoryScene,ModeSelectScene], 
+    scale: {
+        mode: Phaser.Scale.FIT,       
+        autoCenter: Phaser.Scale.CENTER_BOTH
+        // ※ width と height は scale の中から外したほうがすっきり動きます
+    }
+
 };
+
 const game = new Phaser.Game(config);
 </script>
 </body>
