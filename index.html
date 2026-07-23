@@ -330,69 +330,281 @@ class ModeSelectScene extends Phaser.Scene {
 }
 
 //---ステージ選択シーン---
+// --- ステージ選択シーン（跳ね返りアニメーション完全対応版） ---
 class StageSelectScene extends Phaser.Scene {
     constructor() { super('StageSelectScene'); }
 
-    create() {
-        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
-        this.add.text(200, 80, 'ステージ選択', { fontSize: '32px', color: '#000' }).setOrigin(0.5);
-
-        // ステージデータを配列で管理
-        const stages = [
-            { name: 'たし算', key: 'addition' },
-            { name: 'ひき算', key: 'subtraction' },
-            { name: 'かけ算', key: 'multiplication' },
-            { name: 'わり算', key: 'division' }
-        ];
-
-        // 関数を使ってボタンを生成
-        stages.forEach((stage, i) => {
-            this.createTextButton(200, 200 + (i * 70), stage.name, () => {
-                // ここでシーン移動
-                this.scene.start('GameScene', { stage: stage.key });
-            });
-        });
-
-        // 戻るボタン
-        this.createTextButton(200, 520, 'ゲームモード選択シーンに戻る', () => {
-            this.scene.start('ModeSelectScene');
-        },false);
+    preload() {
+        this.load.image('title_back', 'title_back.png');
+        this.load.image('stage_select_title', 'stage_select_title.png');
+        this.load.image('back_btn', 'back_btn.png');
     }
 
-    // 関数定義：playSE という引数を追加 (デフォルトで true)
-createTextButton(x, y, text, callback, playSE = true) {
-    let btn = this.add.text(x, y, text, { 
-        fontSize: '24px', 
-        backgroundColor: '#444', 
-        padding: { x: 20, y: 10 } 
-    }).setOrigin(0.5).setInteractive();
+    create() {
+        // 背景とタイトル
+        this.add.image(200, 300, 'title_back').setDisplaySize(400, 600);
+        this.add.image(200, 55, 'stage_select_title').setScale(0.15);
 
-    // 押した時の反応を「色」と「サイズ」だけに絞る
-    btn.on('pointerdown', () => {
-        btn.setBackgroundColor('#111');
-        btn.setScale(0.95); // 少し小さくするだけで「押した感」が出る
-        
-        if (playSE) {
-            this.sound.play('start', { volume: 0.5 });
+        // --- 全ステージデータ ---
+        this.allStages = [
+            // 1ページ目
+            { num: '1', name: 'たし算の森',   icon: '💧', mode: 'addition',       scene: 'GameScene' },
+            { num: '2', name: 'ひき算の洞窟', icon: '🦇', mode: 'subtraction',    scene: 'GameScene' },
+            { num: '3', name: 'かけ算の塔',   icon: '🔥', mode: 'multiplication', scene: 'GameScene' },
+            { num: '4', name: 'わり算の城',   icon: '🏰', mode: 'division',       scene: 'GameScene' },
+
+            // 2ページ目（Coming Soon）
+            { num: '5', name: '🔒 小数の沼 (Coming Soon)', isLock: true },
+            { num: '6', name: '🔒 分数の山 (Coming Soon)', isLock: true },
+            { num: '7', name: '🔒 図形の迷宮 (Coming Soon)', isLock: true },
+            { num: '8', name: '🔒 文章題の試練 (Coming Soon)', isLock: true }
+        ];
+
+        this.currentPage = 0;
+        this.itemsPerPage = 4;
+        this.stageContainer = null;
+
+        this.createNavigationUI();
+        this.renderPage();
+    }
+
+    renderPage() {
+        if (this.stageContainer) {
+            this.stageContainer.destroy(true);
         }
-        callback();
-    });
+        this.stageContainer = this.add.container(0, 0);
 
-    btn.on('pointerup', () => {
-        btn.setBackgroundColor('#444');
-        btn.setScale(1.0);
-    });
+        let startIdx = this.currentPage * this.itemsPerPage;
+        let pageItems = this.allStages.slice(startIdx, startIdx + this.itemsPerPage);
 
-    btn.on('pointerout', () => {
-        btn.setBackgroundColor('#444');
-        btn.setScale(1.0);
-    });
+        let startY = 115;
+        let spacing = 90;
 
-    return btn;
+        pageItems.forEach((item, index) => {
+            let y = startY + (index * spacing);
+
+            if (item.isLock) {
+                // 🔒 カミングスーン用のボタン枠
+                let btn = this.add.graphics();
+                btn.fillStyle(0x1a1a2e, 0.85);
+                btn.lineStyle(2, 0x666666, 1);
+                btn.fillRoundedRect(20, y, 360, 82, 8);
+                btn.strokeRoundedRect(20, y, 360, 82, 8);
+
+                let txt = this.add.text(200, y + 41, item.name, {
+                    fontSize: '18px', color: '#888888', fontStyle: 'bold'
+                }).setOrigin(0.5);
+
+                let hitZone = this.add.zone(200, y + 41, 360, 82).setInteractive();
+                hitZone.on('pointerdown', () => {
+                    alert('【 Coming Soon 】\nこのステージは今後のアップデートをお楽しみに！');
+                });
+
+                this.stageContainer.add([btn, txt, hitZone]);
+            } else {
+                // 🎮 豪華なステージボタン（跳ね返り機能つき）を描画して格納
+                let btnContainer = this.drawFancyButton(20, y, item);
+                this.stageContainer.add(btnContainer);
+            }
+        });
+
+        this.updateNavigationUI();
+    }
+
+    // ★★★ 豪華RPG風ボタン描画＆跳ね返りアニメーション関数 ★★★
+    drawFancyButton(x, y, item) {
+        let w = 360;
+        let h = 82;
+        
+        // ボタンの中心（跳ね返りアニメーションの基準点）にコンテナを配置
+        let cx = x + w / 2; // 200
+        let cy = y + h / 2; // y + 41
+        let btnContainer = this.add.container(cx, cy);
+
+        // --- 1. メイン背景（深緑）と豪華な金枠（中心基準相対座標） ---
+        let bg = this.add.graphics();
+        bg.fillStyle(0x0e2411, 0.92);
+        bg.fillRoundedRect(-180, -41, w, h, 8);
+        bg.lineStyle(3, 0xd4af37, 1);
+        bg.strokeRoundedRect(-180, -41, w, h, 8);
+
+        bg.lineStyle(1, 0x77601f, 0.8);
+        bg.strokeRoundedRect(-177, -38, w - 6, h - 6, 6);
+
+        // 右側のスコア用暗めパネル
+        bg.fillStyle(0x051206, 0.85);
+        bg.fillRoundedRect(10, -15, 160, 48, 6);
+        bg.lineStyle(1, 0x2d4d2e, 0.8);
+        bg.strokeRoundedRect(10, -15, 160, 48, 6);
+
+        // 左上の「ステージ番号」バッジ
+        bg.fillStyle(0xd4af37, 1);
+        bg.fillRoundedRect(-176, -37, 26, 26, 4);
+        bg.fillStyle(0x1a1a2e, 1);
+        bg.fillRoundedRect(-174, -35, 22, 22, 3);
+
+        btnContainer.add(bg);
+
+        // --- 2. テキスト・アイコン類 ---
+        let numTxt = this.add.text(-163, -24, item.num, {
+            fontSize: '15px', color: '#ffffff', fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        let iconTxt = this.add.text(-130, 2, item.icon || '👾', {
+            fontSize: '36px'
+        }).setOrigin(0.5);
+
+        let titleTxt = this.add.text(20, -31, item.name, {
+            fontSize: '18px', color: '#ffffff', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 3
+        }).setOrigin(0.5, 0);
+
+        // ランキング用保存データの読み込み
+        let scoreObj = JSON.parse(localStorage.getItem(`${item.mode}_rank_score_data`)) || { value: 0 };
+        let comboObj = JSON.parse(localStorage.getItem(`${item.mode}_rank_combo_data`)) || { value: 0 };
+        let killObj  = JSON.parse(localStorage.getItem(`${item.mode}_rank_kill_data`))  || { value: 0 };
+
+        let bestScore = Number(scoreObj.value || 0).toLocaleString();
+        let maxCombo  = comboObj.value || 0;
+        let maxKills  = killObj.value || 0;
+
+        let scoreLabel = this.add.text(18, -11, '🏆 スコア', { fontSize: '10px', color: '#e2c673', fontStyle: 'bold' });
+        let scoreVal   = this.add.text(162, -11, bestScore, { fontSize: '12px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(1, 0);
+
+        let comboLabel = this.add.text(18, 3, '🔥 コンボ', { fontSize: '10px', color: '#ff9980', fontStyle: 'bold' });
+        let comboVal   = this.add.text(162, 3, `${maxCombo} COMBO`, { fontSize: '11px', color: '#80ff80', fontStyle: 'bold' }).setOrigin(1, 0);
+
+        let killLabel  = this.add.text(18, 17, '⚔️ 討伐数', { fontSize: '10px', color: '#99ccff', fontStyle: 'bold' });
+        let killVal    = this.add.text(162, 17, `${maxKills} KILL`, { fontSize: '11px', color: '#ffdd80', fontStyle: 'bold' }).setOrigin(1, 0);
+
+        btnContainer.add([numTxt, iconTxt, titleTxt, scoreLabel, scoreVal, comboLabel, comboVal, killLabel, killVal]);
+
+        // --- 3. タップ判定 ＆ ✨ 跳ね返りアニメーション ★★★ ---
+        let hitZone = this.add.zone(0, 0, w, h).setInteractive();
+        hitZone.on('pointerdown', () => {
+            // 他のTweenがあればキャンセルの上、跳ね返りアニメーション開始
+            this.tweens.killTweensOf(btnContainer);
+            this.tweens.add({
+                targets: btnContainer,
+                scaleX: 0.90,
+                scaleY: 0.90,
+                duration: 100,
+                yoyo: true,             // 元の大きさに戻る（跳ね返り）
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    this.registry.set('selectedMode', item.mode);
+                    this.scene.start(item.scene);
+                }
+            });
+        });
+        btnContainer.add(hitZone);
+
+        return btnContainer;
+    }
+
+    // --- ページ切替UI ---
+    createNavigationUI() {
+        let navY = 500; // ページ移動ボタンの位置をY=500に固定
+
+        // 「前へ」ボタン（跳ね返りつき）
+        this.prevBtn = this.add.text(80, navY, '＜ 前へ', {
+            fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 4
+        }).setOrigin(0.5).setInteractive();
+
+        this.setupTextButton(this.prevBtn, () => {
+            if (this.currentPage > 0) {
+                this.currentPage--;
+                this.renderPage();
+            }
+        });
+
+        // ページテキスト
+        this.pageText = this.add.text(200, navY, '', {
+            fontSize: '22px', color: '#ffe17d', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 4
+        }).setOrigin(0.5);
+
+        // 「次へ」ボタン（跳ね返りつき）
+        this.nextBtn = this.add.text(320, navY, '次へ ＞', {
+            fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 4
+        }).setOrigin(0.5).setInteractive();
+
+        this.setupTextButton(this.nextBtn, () => {
+            let maxPage = Math.ceil(this.allStages.length / this.itemsPerPage) - 1;
+            if (this.currentPage < maxPage) {
+                this.currentPage++;
+                this.renderPage();
+            }
+        });
+
+        // もどるボタン（Y=555）
+        let backBtn = this.add.image(80, 555, 'back_btn').setInteractive().setScale(0.55);
+        this.setupPanelButton(backBtn, () => {
+            this.scene.start('ModeSelectScene');
+        });
+    }
+
+    // テキスト用跳ね返りアニメーション処理
+    setupTextButton(textObj, callback) {
+        textObj.on('pointerdown', () => {
+            this.tweens.killTweensOf(textObj);
+            this.tweens.add({
+                targets: textObj,
+                scaleX: 0.85,
+                scaleY: 0.85,
+                duration: 100,
+                yoyo: true,
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    callback();
+                }
+            });
+        });
+    }
+
+    // 画像用跳ね返りアニメーション処理
+    setupPanelButton(btn, callback) {
+        btn.on('pointerdown', () => {
+            btn.setTint(0xaaaaaa);
+            let baseScaleX = btn.scaleX;
+            let baseScaleY = btn.scaleY;
+
+            this.tweens.killTweensOf(btn);
+            this.tweens.add({
+                targets: btn,
+                scaleX: baseScaleX * 0.85,
+                scaleY: baseScaleY * 0.85,
+                duration: 100,
+                yoyo: true,
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    btn.clearTint();
+                    btn.setScale(baseScaleX, baseScaleY);
+                    callback();
+                }
+            });
+        });
+    }
+
+    updateNavigationUI() {
+        let totalPages = Math.ceil(this.allStages.length / this.itemsPerPage);
+        this.pageText.setText(`${this.currentPage + 1} / ${totalPages}`);
+
+        if (this.currentPage === 0) {
+            this.prevBtn.setAlpha(0.3).disableInteractive();
+        } else {
+            this.prevBtn.setAlpha(1.0).setInteractive();
+        }
+
+        if (this.currentPage >= totalPages - 1) {
+            this.nextBtn.setAlpha(0.3).disableInteractive();
+        } else {
+            this.nextBtn.setAlpha(1.0).setInteractive();
+        }
+    }
 }
-
-}
-
 // --- ゲームシーン ---
 class GameScene extends Phaser.Scene {
 
@@ -751,8 +963,8 @@ create() {
         if (!enemy) {
             let shadow = this.add.ellipse(450, 330, 60, 15, 0x000000, 0.4);
             let enemyKey;
-            // 例：5%の確率で kanepg、残りの95%は通常の teki1()
-            if (Phaser.Math.Between(0, 99) < 90) {
+            // 例：5%の確率で ジェムげっとの確率、残りの95%は通常の teki1()
+            if (Phaser.Math.Between(0, 99) < 5) {
                 enemyKey = 'kanepg';
             } else {
                 enemyKey = this.teki1();
@@ -1063,20 +1275,20 @@ create() {
                     this.james.y = this.james.originalY;
 
                     // ★ーーー ここからランキング記録の保存処理を追加 ーーー★
-let stage = this.currentStage; // 'addition' などのステージ名
+                let stage = this.currentStage; // 'addition' などのステージ名
  
-// プレイヤー情報の取得
-let playerId = localStorage.getItem('player_id') || '0000';
-let playerName = localStorage.getItem('player_name') || '名無し';
+                // プレイヤー情報の取得
+                let playerId = localStorage.getItem('player_id') || '0000';
+                let playerName = localStorage.getItem('player_name') || '名無し';
 
-// 1. スコアの保存チェック
-let oldScoreData = JSON.parse(localStorage.getItem(`${stage}_rank_score_data`)) || { value: 0 };
-let scoreUpdated = false;
-if (this.score > (oldScoreData.value || 0)) {
-    let newScoreData = { value: this.score, id: playerId, name: playerName };
-    localStorage.setItem(`${stage}_rank_score_data`, JSON.stringify(newScoreData));
-    scoreUpdated = true;
-}
+                // 1. スコアの保存チェック
+                let oldScoreData = JSON.parse(localStorage.getItem(`${stage}_rank_score_data`)) || { value: 0 };
+                let scoreUpdated = false;
+                if (this.score > (oldScoreData.value || 0)) {
+                    let newScoreData = { value: this.score, id: playerId, name: playerName };
+                    localStorage.setItem(`${stage}_rank_score_data`, JSON.stringify(newScoreData));
+                    scoreUpdated = true;
+                }
 
 // 2. コンボの保存チェック
 let oldComboData = JSON.parse(localStorage.getItem(`${stage}_rank_combo_data`)) || { value: 0 };
@@ -1298,39 +1510,48 @@ class ProfileScene extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive();
 
         saveText.on('pointerdown', async () => {
-            // 入力された値を取得して保存
-            let grade = gradeInput.value.trim();
-            let cls = classInput.value.trim();
-            let num = numberInput.value.trim();
+            // 入力された値を取得
+            let rawGrade = gradeInput.value.trim();
+            let rawCls = classInput.value.trim();
+            let rawNum = numberInput.value.trim();
             let name = nameInput.value.trim();
 
-            if (!grade || !cls || !num || !name) {
+            if (!rawGrade || !rawCls || !rawNum || !name) {
                 alert('すべての項目を入力してください！');
                 return;
             }
 
-            // 番号を自動で2桁に整える処理
+            // ★ 1. 全角数字を自動で「半角数字」に変換する処理
+            let grade = this.toHalfWidth(rawGrade);
+            let cls = this.toHalfWidth(rawCls);
+            let num = this.toHalfWidth(rawNum);
+
+            // 番号を自動で2桁に整える処理 (例: 5 -> 05)
             let formattedNum = num.padStart(2, '0');
 
-            // 学年 + クラス + 整えた番号でIDを作る
+            // 学年 + クラス + 整えた番号でIDを作る (例: 2205)
             let playerId = `${grade}${cls}${formattedNum}`;
 
-            // ローカルストレージに保存
-            localStorage.setItem('player_grade', grade);
-            localStorage.setItem('player_class', cls);
-            localStorage.setItem('player_number', num);
-            localStorage.setItem('player_name', name);
-            localStorage.setItem('player_id', playerId);
-
-            // ★ ここでFirebase (Firestore) にデータを送信！
-           // ★ ここでFirebase (Firestore) にデータを送信！
+            // ★ 2. Firebase (Firestore) にアクセスして重複チェック！
             try {
-                // Firestoreの機能を読み込む（HTML側で初期化したappを使用）
-                const { getFirestore, doc, setDoc, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js");
+                const { getFirestore, doc, getDoc, setDoc, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js");
                 const db = getFirestore();
 
-                // players コレクションの playerId のドキュメントに保存
-                await setDoc(doc(db, "players", playerId), {
+                // すでにそのIDのプレイヤーが存在するか検索
+                const playerDocRef = doc(db, "players", playerId);
+                const playerDocSnap = await getDoc(playerDocRef);
+
+                // 現在この端末に保存されている自分自身のID
+                let myCurrentId = localStorage.getItem('player_id');
+
+                // 「サーバー上にデータが既に存在する」かつ「自分の現在のIDと異なる」場合は登録拒否！
+                if (playerDocSnap.exists() && playerId !== myCurrentId) {
+                    alert(`【登録できません】\n「${grade}年${cls}組${num}番」は、すでに他のプレイヤーが登録しています！`);
+                    return; // 登録処理を中断して戻す
+                }
+
+                // 重複がなければ Firestore に保存！
+                await setDoc(playerDocRef, {
                     grade: grade,
                     class: cls,
                     number: formattedNum,
@@ -1339,11 +1560,22 @@ class ProfileScene extends Phaser.Scene {
                 }, { merge: true });
 
                 console.log("Firestoreへのプレイヤー登録成功！");
+
             } catch (e) {
-                console.error("Firestoreへの保存に失敗しました: ", e);
+                console.error("Firestoreへの保存・チェックに失敗しました: ", e);
+                alert('データの確認に失敗しました。通信環境を確認してください。');
+                return;
             }
 
-            // 👇 ここを修正！！！
+            // ★ 3. ローカルストレージにも半角化したデータで保存
+            localStorage.setItem('player_grade', grade);
+            localStorage.setItem('player_class', cls);
+            localStorage.setItem('player_number', num);
+            localStorage.setItem('player_name', name);
+            localStorage.setItem('player_id', playerId);
+
+            alert('プレイヤー情報を登録しました！');
+
             // 入力用HTML要素を画面から削除してからメニューへ戻る
             this.removeInputs([gradeInput, classInput, numberInput, nameInput]); 
             this.scene.start('MenuScene');
@@ -1352,6 +1584,13 @@ class ProfileScene extends Phaser.Scene {
         // シーンが終了するときにHTML要素が残らないようにする安全策
         this.events.once('shutdown', () => {
             this.removeInputs([gradeInput, classInput, numberInput, nameInput]);
+        });
+    }
+
+    // 全角文字（数字）を半角数字に変換する便利メソッド
+    toHalfWidth(str) {
+        return str.replace(/[０-９]/g, (s) => {
+            return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
         });
     }
 
